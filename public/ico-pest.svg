@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Corazón -->
+  <path d="M256 400s-95-60-150-140c-32-48-22-118 33-150 48-27 96 0 117 33 21-33 69-60 117-33 55 32 65 102 33 150-55 80-150 140-150 140z"
+        fill="#ff3b3b"/>
+        
+  <!-- Línea de pulso -->
+  <path d="M120 255h85l22-45 26 90 32-95 22 55h110"
+        stroke="#ffffff"
+        stroke-width="28"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"/>
+</svg>
