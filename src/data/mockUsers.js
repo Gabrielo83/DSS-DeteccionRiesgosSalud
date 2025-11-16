@@ -29,7 +29,7 @@ export const MOCK_USERS = [
   },
   {
     email: "rrhh@empresa.com",
-    password: "RRHH123*",
+    password: "Rrhh123*",
     role: "respRRHH",
     roleLabel: "Responsable RRHH",
     fullName: "Carolina Ruiz",

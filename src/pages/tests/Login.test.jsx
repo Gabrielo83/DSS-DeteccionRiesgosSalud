@@ -99,7 +99,7 @@ describe("Funcionalidad del Login", () => {
     expect(screen.getByText(/ingresa un correo valido/i)).toBeInTheDocument();
   });
 
-  it("se requiere un password con al menos 6 caracteres", async () => {
+  it("se requiere un password seguro (8+ caracteres, mayuscula, minuscula, numero y simbolo)", async () => {
     const user = userEvent.setup();
     renderLogin();
 
@@ -107,13 +107,15 @@ describe("Funcionalidad del Login", () => {
       screen.getByLabelText(/correo electronico/i),
       "superadmin@empresa.com"
     );
-    await user.type(screen.getByLabelText(/contrasena/i), "123");
+    await user.type(screen.getByLabelText(/contrasena/i), "Sup1234"); // sin simbolo y corta
     await user.click(
       screen.getByRole("button", { name: /ingresar al sistema/i })
     );
 
     expect(
-      screen.getByText(/la contrasena debe tener al menos 6 caracteres/i)
+      screen.getByText(
+        /la contrasena debe tener al menos 8 caracteres, incluir mayusculas, minusculas, numeros y simbolos/i,
+      )
     ).toBeInTheDocument();
   });
 

@@ -35,8 +35,13 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
       return;
     }
 
-    if (password.length < 6) {
-      setError("La contrasena debe tener al menos 6 caracteres.");
+    const passwordPolicy =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+    if (!passwordPolicy.test(password)) {
+      setError(
+        "La contrasena debe tener al menos 8 caracteres, incluir mayusculas, minusculas, numeros y simbolos.",
+      );
       return;
     }
 
