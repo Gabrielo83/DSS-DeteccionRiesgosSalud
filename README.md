@@ -64,8 +64,8 @@ window.runDemoSeed()
 ## Próximos pasos
 
 - Integración con Firebase (Auth + Firestore + Storage).
+- Integración con IndexedDB (Offline First)
 - Estados sincronizados entre áreas (RRHH ↔ Médico ↔ Dashboard).
-- CI/CD y despliegue automático del frontend.
 
 ---
 
