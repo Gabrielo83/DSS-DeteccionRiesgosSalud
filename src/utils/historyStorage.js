@@ -32,6 +32,21 @@ const persistHistory = (records) => {
   saveEntity(IDB_STORE, IDB_KEY, records);
 };
 
+const dedupeEntries = (entries = []) => {
+  const seen = new Set();
+  const deduped = [];
+  entries.forEach((item) => {
+    if (!item) return;
+    const key = item.id || item.reference;
+    if (key) {
+      if (seen.has(key)) return;
+      seen.add(key);
+    }
+    deduped.push(item);
+  });
+  return deduped;
+};
+
 const syncFromIndexedDb = async () => {
   if (!isBrowser()) return;
   try {
@@ -56,18 +71,7 @@ export const readEmployeeHistory = (employeeKey) => {
   if (!employeeKey) return [];
   const records = readRawHistory();
   const entries = records[employeeKey] ?? [];
-  const seen = new Set();
-  const deduped = [];
-  entries.forEach((item) => {
-    if (!item) return;
-    const key = item.id || item.reference;
-    if (key) {
-      if (seen.has(key)) return;
-      seen.add(key);
-    }
-    deduped.push(item);
-  });
-  // Si hubo duplicados, persistimos la versión limpia
+  const deduped = dedupeEntries(entries);
   if (deduped.length !== entries.length) {
     records[employeeKey] = deduped;
     persistHistory(records);
@@ -80,7 +84,22 @@ export const readEmployeeHistory = (employeeKey) => {
   });
 };
 
-export const readAllHistory = () => readRawHistory();
+export const readAllHistory = () => {
+  const records = readRawHistory();
+  let mutated = false;
+  Object.entries(records).forEach(([employeeKey, entries]) => {
+    if (!Array.isArray(entries)) return;
+    const deduped = dedupeEntries(entries);
+    if (deduped.length !== entries.length) {
+      records[employeeKey] = deduped;
+      mutated = true;
+    }
+  });
+  if (mutated) {
+    persistHistory(records);
+  }
+  return records;
+};
 
 export const appendEmployeeHistory = (employeeKey, record) => {
   if (!employeeKey || !record) return;
