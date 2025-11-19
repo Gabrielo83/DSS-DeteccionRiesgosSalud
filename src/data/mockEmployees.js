@@ -190,6 +190,15 @@ const employeeSeeds = [
     bloodType: "0+",
     seniority: "3 anos",
   },
+  {
+    fullName: "Romina Moran",
+    sector: "Salud Ocupacional",
+    position: "Licenciada en Informatica en Salud",
+    email: "rominamoran@empresa.com",
+    phone: "+54 9 11 4567-1020",
+    bloodType: "A+",
+    seniority: "5 anos",
+  },
 ];
 
 export const mockEmployees = employeeSeeds.map((seed, index) => ({

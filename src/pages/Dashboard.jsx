@@ -33,6 +33,7 @@ const normalizeText = (value = "") =>
   value
     .replace(/certificado medico\s*-/gi, "")
     .replace(/certificado\s*-/gi, "")
+    .replace(/\benfermedad(es)?\b/gi, "")
     .replace(/cm-\d+/gi, "")
     .trim();
 
@@ -71,13 +72,14 @@ const formatDateValue = (value) => {
 
 const resolvePathologyLabel = (payload = {}) => {
   const fields = [
-    payload.pathology,
-    payload.certificateType,
-    payload.absenceType,
     payload.detailedReason,
+    payload.pathology,
+    payload.reason,
     payload.detail,
+    payload.absenceType,
     payload.title,
     payload.notes,
+    payload.certificateType,
   ];
   const match = fields.find((field) => field && field.trim().length > 0);
   if (!match) return null;
@@ -252,6 +254,7 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   const dynamicEmployees = useMemo(() => {
     const buckets = new Map(); // employee -> Map(pathology -> info)
+    const totals = new Map(); // employee -> total certificados validados
 
     const registerOccurrence = (payload = {}, options = {}) => {
       const { isCountable = true } = options;
@@ -334,6 +337,9 @@ function Dashboard({ isDark, onToggleTheme }) {
       };
 
       employeeBucket.set(pathologyLabel, next);
+      if (isCountable) {
+        totals.set(employeeKey, (totals.get(employeeKey) || 0) + 1);
+      }
     };
 
     validationQueue.forEach((entry) => {
@@ -377,16 +383,31 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
 
     const candidates = [];
-    buckets.forEach((pathologies) => {
+    buckets.forEach((pathologies, employeeKey) => {
+      const totalCount = totals.get(employeeKey) || 0;
+      if (totalCount < MIN_RECURRENT_COUNT) return;
+      let bestInfo = null;
       pathologies.forEach((info) => {
-        if (info.count >= MIN_RECURRENT_COUNT && info.display) {
-          candidates.push({
-            ...info.display,
-            count: info.count,
-            scoreValue: info.scoreValue,
-          });
+        if (!info?.display) return;
+        if (!bestInfo) {
+          bestInfo = info;
+          return;
+        }
+        if (info.count > bestInfo.count) {
+          bestInfo = info;
+          return;
+        }
+        if (info.count === bestInfo.count && info.scoreValue > bestInfo.scoreValue) {
+          bestInfo = info;
         }
       });
+      if (bestInfo?.display) {
+        candidates.push({
+          ...bestInfo.display,
+          count: totalCount,
+          scoreValue: bestInfo.scoreValue,
+        });
+      }
     });
 
     return candidates.sort(
