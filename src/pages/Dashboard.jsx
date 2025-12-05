@@ -55,6 +55,9 @@ const extractScoreValue = (input) => {
 
 const MIN_RECURRENT_COUNT = 3;
 const AUTO_SYNC_INTERVAL_MS = 150 * 1000;
+const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
+  new Date(2024, i, 1).toLocaleDateString("es-AR", { month: "long" }),
+);
 
 const formatDateTimeLabel = (value) => {
   if (!value) return "--";
@@ -101,38 +104,12 @@ const resolvePathologyLabel = (payload = {}) => {
   return firstSentence.trim();
 };
 
-const summaryMetrics = [
-  {
-    title: "Tasa de Ausentismo General",
-    value: "8.7%",
-    badge: "-12%",
-    badgeVariant: "danger",
-    primaryLabel: "vs mes anterior",
-    primaryValue: "+1.3%",
-    secondaryLabel: "Promedio sector",
-    secondaryValue: "7.2%",
-  },
-  {
-    title: "Riesgo Promedio del Personal",
-    value: "4.6",
-    badge: "+0.3",
-    badgeVariant: "warning",
-    primaryLabel: "Mes anterior (4.7)",
-    primaryValue: "Mejora de riesgo",
-    secondaryLabel: "Rango esperado",
-    secondaryValue: "4.0 - 6.0",
-  },
-  {
-    title: "Alertas Activas",
-    value: "23",
-    badge: "Critico",
-    badgeVariant: "danger",
-    primaryLabel: "Requieren atencion inmediata",
-    primaryValue: "8 casos",
-    secondaryLabel: "Alertas moderadas",
-    secondaryValue: "15",
-  },
-];
+const isWithinPeriod = (dateValue, start, end) => {
+  if (!dateValue) return false;
+  const ts = Date.parse(dateValue);
+  if (Number.isNaN(ts)) return false;
+  return ts >= start && ts <= end;
+};
 
 const sectorRisk = [
   {
@@ -185,6 +162,9 @@ function Dashboard({ isDark, onToggleTheme }) {
   const [historySnapshot, setHistorySnapshot] = useState(() =>
     typeof window === "undefined" ? {} : readAllHistory(),
   );
+  const today = new Date();
+  const [periodMonth, setPeriodMonth] = useState(today.getMonth());
+  const [periodYear, setPeriodYear] = useState(today.getFullYear());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [countdownLabel, setCountdownLabel] = useState("02:30");
   const [historyModal, setHistoryModal] = useState({
@@ -202,6 +182,120 @@ function Dashboard({ isDark, onToggleTheme }) {
   const [planStore, setPlanStore] = useState(() =>
     typeof window === "undefined" ? {} : readAllPlans(),
   );
+  const periodRange = useMemo(() => {
+    const start = new Date(periodYear, periodMonth, 1);
+    const end = new Date(periodYear, periodMonth + 1, 0, 23, 59, 59, 999);
+    return {
+      startMs: start.getTime(),
+      endMs: end.getTime(),
+      label: `${MONTH_LABELS[periodMonth]} ${periodYear}`,
+    };
+  }, [periodMonth, periodYear]);
+
+  const allHistoryEntries = useMemo(() => {
+    const entries = [];
+    Object.entries(historySnapshot || {}).forEach(([employeeId, records]) => {
+      if (!Array.isArray(records)) return;
+      records.forEach((record) => {
+        entries.push({
+          ...record,
+          employeeId,
+          employee:
+            record.employee ||
+            employeeIndexById.get(employeeId)?.fullName ||
+            record.employeeId ||
+            "Empleado no identificado",
+          sector: record.sector || employeeIndexById.get(employeeId)?.sector,
+        });
+      });
+    });
+    return entries;
+  }, [historySnapshot]);
+
+  const headcountActive = useMemo(() => {
+    const { startMs, endMs } = periodRange;
+    return mockEmployees.filter((emp) => {
+      if (emp.active === false) return false;
+      const hire = Date.parse(emp.hireDate);
+      const termination = emp.terminationDate ? Date.parse(emp.terminationDate) : null;
+      if (Number.isNaN(hire)) return false;
+      const started = hire <= endMs;
+      const notTerminated = !termination || termination >= startMs;
+      return started && notTerminated;
+    }).length;
+  }, [periodRange]);
+
+  const filteredValidated = useMemo(() => {
+    const { startMs, endMs } = periodRange;
+    return allHistoryEntries.filter((entry) => {
+      const status = (entry.status || "").toLowerCase();
+      if (status !== "validado" && status !== "aprobado") return false;
+      const candidateDate =
+        entry.startDate ||
+        entry.issueDate ||
+        entry.issued ||
+        entry.validityDate ||
+        entry.updatedAt;
+      return isWithinPeriod(candidateDate, startMs, endMs);
+    });
+  }, [allHistoryEntries, periodRange]);
+
+  const alertsCount = useMemo(() => {
+    return validationQueue.filter((entry) => {
+      const status = (entry.status || "").toLowerCase();
+      const priority = (entry.priority || "").toLowerCase();
+      const isPending = status.includes("pendiente") || status.includes("revision");
+      return priority === "alta" && isPending;
+    }).length;
+  }, [validationQueue]);
+
+  const riskAverage = useMemo(() => {
+    if (!filteredValidated.length) return null;
+    const scores = filteredValidated
+      .map((item) => extractScoreValue(item.riskScoreValue ?? item.riskScore))
+      .filter((v) => v != null);
+    if (!scores.length) return null;
+    const avg = scores.reduce((sum, val) => sum + val, 0) / scores.length;
+    return avg;
+  }, [filteredValidated]);
+
+  const summaryMetrics = useMemo(() => {
+    const totalAbsences = filteredValidated.length;
+    const absenteeRate =
+      headcountActive > 0 ? ((totalAbsences / headcountActive) * 100).toFixed(1) : "0.0";
+    return [
+      {
+        title: "Tasa de Ausentismo",
+        value: `${absenteeRate}%`,
+        badge: periodRange.label,
+        badgeVariant: "info",
+        primaryLabel: "Ausencias validadas",
+        primaryValue: totalAbsences,
+        secondaryLabel: "Headcount activo",
+        secondaryValue: headcountActive,
+      },
+      {
+        title: "Riesgo Promedio",
+        value: riskAverage != null ? riskAverage.toFixed(1) : "--",
+        badge: "Certificados",
+        badgeVariant: "info",
+        primaryLabel: "Certificados en periodo",
+        primaryValue: filteredValidated.length,
+        secondaryLabel: "Metodo",
+        secondaryValue: "Promedio por certificado",
+      },
+      {
+        title: "Alertas Activas",
+        value: alertsCount,
+        badge: "Alta prioridad",
+        badgeVariant: "danger",
+        primaryLabel: "Pendientes/Revisión",
+        primaryValue: alertsCount,
+        secondaryLabel: "Periodo",
+        secondaryValue: periodRange.label,
+      },
+    ];
+  }, [filteredValidated, headcountActive, riskAverage, alertsCount, periodRange]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshAll = () => {
@@ -577,6 +671,36 @@ function Dashboard({ isDark, onToggleTheme }) {
                 </span>
               </div>
             </div>
+            <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-2">
+                <label className="font-semibold">Mes:</label>
+                <select
+                  value={periodMonth}
+                  onChange={(e) => setPeriodMonth(Number(e.target.value))}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 focus:border-slate-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {MONTH_LABELS.map((label, idx) => (
+                    <option key={label} value={idx}>
+                      {label.charAt(0).toUpperCase() + label.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="font-semibold">Año:</label>
+                <select
+                  value={periodYear}
+                  onChange={(e) => setPeriodYear(Number(e.target.value))}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 focus:border-slate-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {[periodYear - 1, periodYear, periodYear + 1].map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -598,7 +722,9 @@ function Dashboard({ isDark, onToggleTheme }) {
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       metric.badgeVariant === "danger"
                         ? "bg-rose-100 text-rose-700 dark:bg-rose-600/20 dark:text-rose-300"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                        : metric.badgeVariant === "warning"
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                          : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-100"
                     }`}
                   >
                     {metric.badge}
