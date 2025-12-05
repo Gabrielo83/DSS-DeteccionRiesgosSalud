@@ -519,6 +519,8 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         selectedCertificate.notes ||
         updatedEntry.notes ||
         "",
+      startDate: updatedEntry.startDate,
+      endDate: updatedEntry.endDate,
       riskScore: entryRisk.score,
       riskLevel: entryRisk.level,
       riskDescriptor: entryRisk.descriptor,

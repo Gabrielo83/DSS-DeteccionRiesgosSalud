@@ -1,217 +1,115 @@
-const pad = (value) => String(value).padStart(3, "0");
-
-const employeeSeeds = [
-  {
-    fullName: "Julian Joaquin Torres",
-    sector: "Produccion",
-    position: "Analista Senior",
-    email: "julian.torres@empresa.com",
-    phone: "+54 9 11 4567-1001",
-    bloodType: "O+",
-    seniority: "7 anos",
-  },
-  {
-    fullName: "Camila Soledad Vega",
-    sector: "Recursos Humanos",
-    position: "Responsable RRHH",
-    email: "camila.vega@empresa.com",
-    phone: "+54 9 11 4567-1002",
-    bloodType: "A+",
-    seniority: "9 anos",
-  },
-  {
-    fullName: "Nicolas Esteban Dominguez",
-    sector: "IT",
-    position: "Especialista DevOps",
-    email: "nicolas.dominguez@empresa.com",
-    phone: "+54 9 11 4567-1003",
-    bloodType: "B+",
-    seniority: "6 anos",
-  },
-  {
-    fullName: "Laura Betiana Navarro",
-    sector: "Calidad",
-    position: "Ingeniera de Calidad",
-    email: "laura.navarro@empresa.com",
-    phone: "+54 9 11 4567-1004",
-    bloodType: "AB+",
-    seniority: "5 anos",
-  },
-  {
-    fullName: "Ramiro Andres Fernandez",
-    sector: "Mantenimiento",
-    position: "Supervisor Tecnico",
-    email: "ramiro.fernandez@empresa.com",
-    phone: "+54 9 11 4567-1005",
-    bloodType: "O-",
-    seniority: "11 anos",
-  },
-  {
-    fullName: "Pilar Luciana Mendez",
-    sector: "Logistica",
-    position: "Planificadora Logistica",
-    email: "pilar.mendez@empresa.com",
-    phone: "+54 9 11 4567-1006",
-    bloodType: "A-",
-    seniority: "4 anos",
-  },
-  {
-    fullName: "Hernan Gustavo Salazar",
-    sector: "Produccion",
-    position: "Coordinador de Planta",
-    email: "hernan.salazar@empresa.com",
-    phone: "+54 9 11 4567-1007",
-    bloodType: "B-",
-    seniority: "13 anos",
-  },
-  {
-    fullName: "Magdalena Ruiz Castell",
-    sector: "Administracion",
-    position: "Analista Administrativo",
-    email: "magdalena.ruiz@empresa.com",
-    phone: "+54 9 11 4567-1008",
-    bloodType: "AB-",
-    seniority: "3 anos",
-  },
-  {
-    fullName: "Diego Ariel Ortega",
-    sector: "Ventas",
-    position: "Coordinador Comercial",
-    email: "diego.ortega@empresa.com",
-    phone: "+54 9 11 4567-1009",
-    bloodType: "O+",
-    seniority: "8 anos",
-  },
-  {
-    fullName: "Ines Rocio Villalba",
-    sector: "IT",
-    position: "Desarrolladora Frontend",
-    email: "ines.villalba@empresa.com",
-    phone: "+54 9 11 4567-1010",
-    bloodType: "A+",
-    seniority: "2 anos",
-  },
-  {
-    fullName: "Bruno Marcos Pereyra",
-    sector: "Produccion",
-    position: "Lider de Turno",
-    email: "bruno.pereyra@empresa.com",
-    phone: "+54 9 11 4567-1011",
-    bloodType: "B+",
-    seniority: "10 anos",
-  },
-  {
-    fullName: "Elena Sofia Ybarra",
-    sector: "Recursos Humanos",
-    position: "Analista de Talento",
-    email: "elena.ybarra@empresa.com",
-    phone: "+54 9 11 4567-1012",
-    bloodType: "AB+",
-    seniority: "5 anos",
-  },
-  {
-    fullName: "Federico Nahuel Toscano",
-    sector: "Mantenimiento",
-    position: "Tecnico Especialista",
-    email: "federico.toscano@empresa.com",
-    phone: "+54 9 11 4567-1013",
-    bloodType: "O-",
-    seniority: "7 anos",
-  },
-  {
-    fullName: "Olivia Paz Villarroel",
-    sector: "Calidad",
-    position: "Analista de Laboratorio",
-    email: "olivia.villarroel@empresa.com",
-    phone: "+54 9 11 4567-1014",
-    bloodType: "A-",
-    seniority: "6 anos",
-  },
-  {
-    fullName: "Hugo Martin Ximenez",
-    sector: "Logistica",
-    position: "Supervisor de Deposito",
-    email: "hugo.ximenez@empresa.com",
-    phone: "+54 9 11 4567-1015",
-    bloodType: "B-",
-    seniority: "12 anos",
-  },
-  {
-    fullName: "Rocio Valentina Zarate",
-    sector: "Ventas",
-    position: "Ejecutiva Comercial",
-    email: "rocio.zarate@empresa.com",
-    phone: "+54 9 11 4567-1016",
-    bloodType: "AB-",
-    seniority: "4 anos",
-  },
-  {
-    fullName: "Mateo Nicolas Castillo",
-    sector: "Administracion",
-    position: "Analista Contable",
-    email: "mateo.castillo@empresa.com",
-    phone: "+54 9 11 4567-1017",
-    bloodType: "O+",
-    seniority: "3 anos",
-  },
-  {
-    fullName: "Isabela Torres Vega",
-    sector: "Produccion",
-    position: "Planificadora de Produccion",
-    email: "isabela.torres@empresa.com",
-    phone: "+54 9 11 4567-1018",
-    bloodType: "A+",
-    seniority: "6 anos",
-  },
-  {
-    fullName: "Quintin Salvador Ramos",
-    sector: "IT",
-    position: "Arquitecto de Software",
-    email: "quintin.ramos@empresa.com",
-    phone: "+54 9 11 4567-1019",
-    bloodType: "B+",
-    seniority: "9 anos",
-  },
-  {
-    fullName: "Tamara Beatriz Gomez",
-    sector: "Recursos Humanos",
-    position: "Especialista en Capacitacion",
-    email: "tamara.gomez@empresa.com",
-    phone: "+54 9 11 4567-1020",
-    bloodType: "AB+",
-    seniority: "8 anos",
-  },
-  {
-    fullName: "Hugo Gabriel Caamaño",
-    sector: "Salud Ocupacional",
-    position: "Licenciado en Seguridad e Higiene",
-    email: "hugogabriel@empresa.com",
-    phone: "+54 9 11 4567-1020",
-    bloodType: "0+",
-    seniority: "3 anos",
-  },
-  {
-    fullName: "Romina Moran",
-    sector: "Salud Ocupacional",
-    position: "Licenciada en Informatica en Salud",
-    email: "rominamoran@empresa.com",
-    phone: "+54 9 11 4567-1020",
-    bloodType: "A+",
-    seniority: "5 anos",
-  },
+const SECTOR_QUOTAS = [
+  { sector: "Recursos Humanos", count: 5, position: "Analista RRHH" },
+  { sector: "Salud Ocupacional", count: 5, position: "Profesional Salud Ocup." },
+  { sector: "Seguridad Ocupacional", count: 10, position: "Tec. Seguridad" },
+  { sector: "Producción", count: 20, position: "Operario" },
+  { sector: "Ventas", count: 20, position: "Ejecutivo Comercial" },
+  { sector: "Administración", count: 20, position: "Analista Administrativo" },
+  { sector: "Comercialización", count: 20, position: "Asesor Comercial" },
 ];
 
-export const mockEmployees = employeeSeeds.map((seed, index) => ({
-  employeeId: `LEG-${pad(index + 1)}`,
-  medicalRecordId: `MED-${pad(index + 201)}`,
-  fullName: seed.fullName,
-  sector: seed.sector,
-  position: seed.position,
-  email: seed.email,
-  phone: seed.phone,
-  bloodType: seed.bloodType,
-  seniority: seed.seniority,
-  avatar: `https://i.pravatar.cc/150?img=${(index % 70) + 1}`,
-}));
+const FIRST_NAMES = [
+  "Juan", "María", "Pedro", "Lucía", "Sofía", "Diego", "Camila", "Bruno",
+  "Valentina", "Mateo", "Agustina", "Joaquín", "Julieta", "Nicolás", "Micaela",
+  "Ramiro", "Pilar", "Hernán", "Magdalena", "Inés", "Elena", "Federico",
+  "Olivia", "Hugo", "Rocío", "Mateo", "Isabela", "Quintín", "Tamara", "Romina",
+  "Gabriel", "Florencia", "Lautaro", "Milagros", "Santiago", "Ana", "Carolina",
+  "Franco", "Marcos", "Paula", "Ariel", "Sabrina", "Leandro", "Mauro", "Delfina",
+  "Catalina", "Emilia", "Tomás", "Martina", "Renata", "Nahuel", "Axel", "Mariano",
+];
+
+const LAST_NAMES = [
+  "Torres", "Vega", "Dominguez", "Navarro", "Fernandez", "Mendez", "Salazar",
+  "Ruiz", "Ortega", "Villalba", "Pereyra", "Ybarra", "Toscano", "Villarroel",
+  "Ximenez", "Zarate", "Castillo", "Ramos", "Gomez", "Moran", "Caamaño",
+  "Liborsi", "Chavez", "Sanchez", "Romero", "Alvarez", "Herrera", "Gimenez",
+  "Lopez", "Acosta", "Silva", "Martinez", "Diaz", "Ponce", "Delgado", "Ojeda",
+  "Arias", "Miranda", "Rivas", "Saavedra", "Ibarra", "Paz", "Cabrera", "Montoya",
+  "Benitez", "Nuñez", "Flores", "Suarez", "Luna", "Villar", "Bustos",
+];
+
+const BLOOD_TYPES = ["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"];
+
+const randomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const pad = (value) => String(value).padStart(3, "0");
+
+const randomDateBetween = (start, end) => {
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const date = new Date(startMs + Math.random() * (endMs - startMs));
+  return date.toISOString().slice(0, 10);
+};
+
+const buildEmployees = () => {
+  const employees = [];
+  let idCounter = 1;
+  const today = new Date();
+  const startBase = new Date(today.getFullYear() - 10, 0, 1);
+
+  SECTOR_QUOTAS.forEach(({ sector, count, position }) => {
+    for (let i = 0; i < count; i += 1) {
+      const first = randomItem(FIRST_NAMES);
+      const last = randomItem(LAST_NAMES);
+      const fullName = `${first} ${last}`;
+      const employeeId = `LEG-${pad(idCounter)}`;
+      const medicalRecordId = `MED-${pad(idCounter + 200)}`;
+      const hireDate = randomDateBetween(startBase, today);
+      const isActive = Math.random() > 0.15; // ~85% activos
+      const terminationDate = isActive
+        ? null
+        : randomDateBetween(new Date(hireDate), today);
+      employees.push({
+        employeeId,
+        medicalRecordId,
+        fullName,
+        sector,
+        position,
+        email: `${first.toLowerCase()}.${last.toLowerCase()}${idCounter}@empresa.com`,
+        phone: `+54 9 11 4567-${String(1000 + idCounter).slice(-4)}`,
+        bloodType: randomItem(BLOOD_TYPES),
+        seniority: `${1 + (idCounter % 15)} anos`,
+        avatar: `https://i.pravatar.cc/150?img=${(idCounter % 70) + 1}`,
+        active: isActive,
+        hireDate,
+        terminationDate,
+      });
+      idCounter += 1;
+    }
+  });
+
+  // si faltan por redondeos, rellena hasta 100
+  while (employees.length < 100) {
+    const first = randomItem(FIRST_NAMES);
+    const last = randomItem(LAST_NAMES);
+    const fullName = `${first} ${last}`;
+    const employeeId = `LEG-${pad(idCounter)}`;
+    const medicalRecordId = `MED-${pad(idCounter + 200)}`;
+    const hireDate = randomDateBetween(startBase, today);
+    const isActive = Math.random() > 0.15;
+    const terminationDate = isActive
+      ? null
+      : randomDateBetween(new Date(hireDate), today);
+    employees.push({
+      employeeId,
+      medicalRecordId,
+      fullName,
+      sector: "Comercialización",
+      position: "Asesor Comercial",
+      email: `${first.toLowerCase()}.${last.toLowerCase()}${idCounter}@empresa.com`,
+      phone: `+54 9 11 4567-${String(1000 + idCounter).slice(-4)}`,
+      bloodType: randomItem(BLOOD_TYPES),
+      seniority: `${1 + (idCounter % 15)} anos`,
+      avatar: `https://i.pravatar.cc/150?img=${(idCounter % 70) + 1}`,
+      active: isActive,
+      hireDate,
+      terminationDate,
+    });
+    idCounter += 1;
+  }
+
+  return employees.slice(0, 100);
+};
+
+export const mockEmployees = buildEmployees();
 
 export default mockEmployees;
