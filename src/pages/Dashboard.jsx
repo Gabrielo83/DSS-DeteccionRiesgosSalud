@@ -318,40 +318,15 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   const openHeatmapModal = useCallback(
     (sector) => {
-      const validatedItems = filteredValidated
-        .filter((entry) => {
-          const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
-          const entrySector = entry.sector || base?.sector || "Sin sector";
-          return entrySector === sector;
-        })
-        .map((entry) => ({
-          reference: entry.reference || entry.id || "N/A",
-          employee:
-            entry.employee ||
-            (entry.employeeId ? employeeIndexById.get(entry.employeeId)?.fullName : "") ||
-            "Empleado",
-          status: entry.status || "Validado",
-          priority: entry.priority || "--",
-          startDate: entry.startDate || entry.issueDate || entry.issued,
-          endDate: entry.endDate || entry.validityDate,
-          days:
-            entry.absenceDays ||
-            entry.days ||
-            diffDaysInclusive(entry.startDate, entry.endDate) ||
-            null,
-          type:
-            entry.certificateType ||
-            entry.absenceType ||
-            entry.title ||
-            "Certificado",
-          source: "validado",
-        }));
-
       const queueItems = validationQueue
         .filter((entry) => {
           const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
           const entrySector = entry.sector || base?.sector || "Sin sector";
-          return entrySector === sector;
+          const status = (entry.status || "").toLowerCase();
+          const priority = (entry.priority || "").toLowerCase();
+          const isPending = status.includes("pendiente") || status.includes("revision");
+          const isHighOrLow = priority === "alta" || priority === "baja" || priority === "media";
+          return entrySector === sector && isPending && isHighOrLow;
         })
         .map((entry) => ({
           reference: entry.reference || entry.id || "N/A",
@@ -370,15 +345,30 @@ function Dashboard({ isDark, onToggleTheme }) {
             null,
           type: entry.certificateType || entry.absenceType || "Certificado",
           source: "cola",
-        }));
+        }))
+        .sort((a, b) => {
+          const pa = (a.priority || "").toLowerCase();
+          const pb = (b.priority || "").toLowerCase();
+          if (pa === pb) return 0;
+          if (pa === "alta") return -1;
+          if (pb === "alta") return 1;
+          if (pa === "media") return -1;
+          if (pb === "media") return 1;
+          return 0;
+        });
 
       setHeatmapModal({
         isOpen: true,
         sector,
-        items: [...validatedItems, ...queueItems],
+        items: queueItems.map((item) => ({
+          ...item,
+          sectorHeadcount: {
+            active: headcountBySector.get(sector) || 0,
+          },
+        })),
       });
     },
-    [filteredValidated, validationQueue, employeeIndexById],
+    [filteredValidated, validationQueue, employeeIndexById, headcountBySector],
   );
 
   const closeHeatmapModal = useCallback(
@@ -443,6 +433,16 @@ function Dashboard({ isDark, onToggleTheme }) {
       const rate = available > 0 ? (daysLost / available) * 100 : 0;
 
       const classifyTone = () => {
+        // Sin datos validados
+        if (validated.length === 0) {
+          if (alerts > 0) {
+            return {
+              status: "Alertas pendientes",
+              tone: "from-slate-500/70 to-slate-600/70",
+            };
+          }
+          return { status: "Sin datos", tone: "from-slate-400/70 to-slate-500/70" };
+        }
         // Riesgo se prioriza sobre alertas; alertas empujan a medio salvo que el score sea muy bajo
         if (avgRisk != null && avgRisk >= 7) {
           return { status: "Riesgo alto", tone: "from-rose-500/90 to-amber-400/90" };
@@ -458,10 +458,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       };
 
       const toneData = classifyTone();
-      const statsParts = [
-        `${validated.length} cert. validados`,
-        `${headcount} activos`,
-      ];
+      const statsParts = [`${headcount} activos`];
       if (alerts > 0) statsParts.push(`${alerts} alertas`);
 
       return {
@@ -476,6 +473,10 @@ function Dashboard({ isDark, onToggleTheme }) {
         scoreLabel: avgRisk != null ? `${avgRisk.toFixed(1)}/10` : "--",
         stats: statsParts.join(" • "),
         onClick: () => openHeatmapModal(sector),
+        headcountInfo: {
+          active: headcount,
+          total: headcountBySector.get(sector) || headcount,
+        },
       };
     });
 
@@ -1069,15 +1070,20 @@ function Dashboard({ isDark, onToggleTheme }) {
                     type="button"
                     onClick={item.onClick}
                     aria-label={`Ver certificados del sector ${item.sector}`}
-                    className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner transition hover:scale-[1.01] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/40`}
-                  >
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
-                        Sector
-                      </p>
-                      <h3 className="text-xl font-semibold">{item.sector}</h3>
-                      <p className="text-sm opacity-90">{item.stats}</p>
-                    </div>
+                className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner transition hover:scale-[1.01] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/40`}
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                      Sector
+                    </p>
+                    <span className="rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/90">
+                      HC: {item.headcountInfo?.active ?? "--"}
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-semibold">{item.sector}</h3>
+                  <p className="text-sm opacity-90">{item.stats}</p>
+                </div>
                     <div className="mt-6 flex items-end justify-between">
                       <div className="space-y-1">
                         <p className="text-xs font-medium uppercase tracking-wide opacity-80">
@@ -1091,9 +1097,6 @@ function Dashboard({ isDark, onToggleTheme }) {
                       <div className="text-right">
                         <p className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold">
                           {item.scoreLabel}
-                        </p>
-                        <p className="mt-1 text-[11px] opacity-90">
-                          Alertas: {item.alerts}
                         </p>
                       </div>
                     </div>
@@ -1370,9 +1373,15 @@ function Dashboard({ isDark, onToggleTheme }) {
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
                   {heatmapModal.sector || "Sector"}
                 </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Certificados validados y en cola para este sector en el periodo
-                </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Certificados en alerta (pendientes) para este sector en el periodo
+                  </p>
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                  HC activos:{" "}
+                  {heatmapModal.items.length
+                    ? heatmapModal.items[0].sectorHeadcount?.active ?? "--"
+                    : "--"}
+                </div>
               </div>
               <button
                 type="button"
@@ -1415,11 +1424,19 @@ function Dashboard({ isDark, onToggleTheme }) {
                           </p>
                         </div>
                         <div className="flex items-center gap-2 text-xs">
-                          <span className="rounded-full border border-slate-200 px-2 py-1 font-semibold uppercase text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                          <span className="rounded-full border border-slate-300 bg-white px-2 py-1 font-semibold uppercase text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                             {item.status}
                           </span>
-                          <span className="rounded-full bg-white/20 px-2 py-1 font-semibold text-white ring-1 ring-white/30 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700/50">
-                            {item.priority}
+                          <span
+                            className={`rounded-full px-2 py-1 font-semibold text-[11px] shadow-sm ring-1 ${
+                              (item.priority || "").toLowerCase() === "alta"
+                                ? "bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-900/40 dark:text-rose-100 dark:ring-rose-800/60"
+                                : (item.priority || "").toLowerCase() === "media"
+                                  ? "bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-800/60"
+                                  : "bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-100 dark:ring-emerald-800/60"
+                            }`}
+                          >
+                            {item.priority || "--"}
                           </span>
                         </div>
                       </div>
