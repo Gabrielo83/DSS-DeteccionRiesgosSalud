@@ -393,6 +393,63 @@ function Dashboard({ isDark, onToggleTheme }) {
       },
     ];
   }, [filteredValidated, headcountActive, riskAverage, alertsCount, periodRange]);
+
+  const trendData = useMemo(() => {
+    const months = [];
+    const base = new Date(periodYear, periodMonth, 1);
+    for (let i = 11; i >= 0; i -= 1) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      months.push({
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        label: d.toLocaleDateString("es-AR", { month: "short" }),
+      });
+    }
+
+    const entries = allHistoryEntries.filter((entry) => {
+      const status = (entry.status || "").toLowerCase();
+      return status === "validado" || status === "aprobado";
+    });
+
+    return months.map((item) => {
+      const start = new Date(item.year, item.month, 1).getTime();
+      const end = new Date(item.year, item.month + 1, 0, 23, 59, 59, 999).getTime();
+      const inMonth = entries.filter((entry) => {
+        const candidateDate =
+          entry.startDate ||
+          entry.issueDate ||
+          entry.issued ||
+          entry.validityDate ||
+          entry.updatedAt;
+        return isWithinPeriod(candidateDate, start, end);
+      });
+      if (!inMonth.length) {
+        return { ...item, value: 0, count: 0 };
+      }
+      const scores = inMonth
+        .map((entry) => {
+          const manual =
+            extractScoreValue(entry.riskScoreValue ?? entry.riskScore);
+          if (manual != null) return manual;
+          const computed = calculateRiskScore({
+            absenceType:
+              entry.absenceType ||
+              entry.certificateType ||
+              entry.title ||
+              "",
+            detailedReason:
+              entry.detailedReason || entry.notes || entry.detail || "",
+          });
+          return computed?.score ?? null;
+        })
+        .filter((val) => val != null);
+      const avg =
+        scores.length > 0
+          ? scores.reduce((sum, val) => sum + val, 0) / scores.length
+          : 0;
+      return { ...item, value: avg, count: scores.length };
+    });
+  }, [allHistoryEntries, periodMonth, periodYear]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshAll = () => {
@@ -924,58 +981,89 @@ function Dashboard({ isDark, onToggleTheme }) {
               </p>
             </header>
             <div className="mt-6 h-52 rounded-2xl bg-gradient-to-br from-slate-50 via-white to-slate-100 p-4 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
-              <svg viewBox="0 0 400 160" className="h-full w-full">
+              <svg viewBox="0 0 400 180" className="h-full w-full">
                 <defs>
-                  <linearGradient id="trend" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop
-                      offset="0%"
-                      stopColor="rgb(248,113,113)"
-                      stopOpacity="0.35"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="rgb(248,113,113)"
-                      stopOpacity="0"
-                    />
+                  <linearGradient id="trendArea" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="rgb(248,113,113)" stopOpacity="0.28" />
+                    <stop offset="100%" stopColor="rgb(248,113,113)" stopOpacity="0" />
                   </linearGradient>
                 </defs>
-                <polyline
-                  fill="url(#trend)"
-                  stroke="none"
-                  points="0,130 30,120 60,110 90,105 120,95 150,85 180,90 210,92 240,89 270,87 300,85 330,90 360,96 390,102 390,160 0,160"
-                />
-                <polyline
-                  fill="none"
-                  stroke="rgb(239,68,68)"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  points="0,130 30,120 60,110 90,105 120,95 150,85 180,90 210,92 240,89 270,87 300,85 330,90 360,96 390,102"
-                />
-                <line
-                  x1="0"
-                  y1="70"
-                  x2="390"
-                  y2="70"
-                  stroke="rgb(248,113,113)"
-                  strokeDasharray="6 6"
-                />
-                <line
-                  x1="0"
-                  y1="110"
-                  x2="390"
-                  y2="110"
-                  stroke="rgb(234,179,8)"
-                  strokeDasharray="6 6"
-                />
-                <line
-                  x1="0"
-                  y1="140"
-                  x2="390"
-                  y2="140"
-                  stroke="rgb(52,211,153)"
-                  strokeDasharray="6 6"
-                />
+                {(() => {
+                  const height = 140;
+                  const baseY = 160;
+                  const maxScore = 10;
+                  const items = trendData.length ? trendData : [{ label: "", value: 0 }];
+                  const step = items.length > 1 ? 380 / (items.length - 1) : 0;
+                  const points = items.map((item, idx) => {
+                    const val = Math.min(Math.max(item.value || 0, 0), maxScore);
+                    const x = 10 + idx * step;
+                    const y = baseY - (val / maxScore) * height;
+                    return { x, y };
+                  });
+                  const linePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+                  const areaPoints = `${points
+                    .map((p) => `${p.x},${p.y}`)
+                    .join(" ")} ${points[points.length - 1].x},${baseY} ${points[0].x},${baseY}`;
+                  return (
+                    <g>
+                      <polyline
+                        fill="url(#trendArea)"
+                        stroke="none"
+                        points={areaPoints}
+                      />
+                      <polyline
+                        fill="none"
+                        stroke="rgb(239,68,68)"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={linePoints}
+                      />
+                      <line
+                        x1="0"
+                        y1="38"
+                        x2="400"
+                        y2="38"
+                        stroke="rgb(248,113,113)"
+                        strokeDasharray="6 6"
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1="0"
+                        y1="82"
+                        x2="400"
+                        y2="82"
+                        stroke="rgb(234,179,8)"
+                        strokeDasharray="6 6"
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1="0"
+                        y1="126"
+                        x2="400"
+                        y2="126"
+                        stroke="rgb(52,211,153)"
+                        strokeDasharray="6 6"
+                        strokeWidth="1.5"
+                      />
+                      {items.map((item, idx) => {
+                        const x = 10 + idx * step;
+                        const label = item.label || "";
+                        return (
+                          <text
+                            key={`${label}-${idx}`}
+                            x={x}
+                            y={174}
+                            textAnchor="middle"
+                            className="fill-slate-400 text-[10px]"
+                          >
+                            {label}
+                          </text>
+                        );
+                      })}
+                    </g>
+                  );
+                })()}
               </svg>
             </div>
             <ul className="mt-6 space-y-2 text-xs text-slate-500 dark:text-slate-400">
