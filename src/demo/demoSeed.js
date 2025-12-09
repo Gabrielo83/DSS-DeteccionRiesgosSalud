@@ -279,3 +279,133 @@ if (import.meta.env.MODE !== "production" && typeof window !== "undefined") {
     "Ejecuta window.runDemoSeed() en la consola para precargar certificados.",
   );
 }
+
+/**
+ * Seed extendido para pruebas del dashboard:
+ * - 50 empleados con certificados en cola de validacion
+ * - Los primeros 10 empleados tienen 4 certificados cada uno (para disparar indicadores)
+ * - Resto de empleados con 1 certificado
+ * - Incluye historial validado para reflejar riesgos e historicos
+ */
+export const runDashboardSeed = () => {
+  if (typeof window === "undefined") return;
+
+  const now = new Date();
+  const employees = mockEmployees.slice(0, 50);
+  const multiCertEmployees = employees.slice(0, 10);
+  const singleCertEmployees = employees.slice(10);
+
+  const entries = [];
+  const historyPayload = {};
+
+  const makeRef = (idx) => `CM-SEED-${String(idx + 1).padStart(4, "0")}`;
+  const statusCycle = ["Pendiente", "En Revision", "Validado", "Validado"];
+
+  let globalIdx = 0;
+
+  const pushEntry = (employee, scenario, idxOffset = 0) => {
+    const submittedDate = new Date(
+      now.getTime() - (globalIdx + idxOffset) * 2 * 60 * 60 * 1000,
+    );
+    const startDateObj = new Date(
+      submittedDate.getTime() - (scenario.durationDays + 1) * DAY_IN_MS,
+    );
+    const endDateObj = new Date(
+      startDateObj.getTime() + scenario.durationDays * DAY_IN_MS,
+    );
+    const status =
+      statusCycle[(globalIdx + idxOffset) % statusCycle.length] || "Pendiente";
+    const reference = makeRef(globalIdx);
+
+    const entry = createValidationEntry(employee, {
+      reference,
+      priority: scenario.priority,
+      status,
+      absenceType: scenario.absenceType,
+      certificateType: scenario.certificateType,
+      detailedReason: scenario.detailedReason,
+      institution: scenario.institution,
+      startDate: formatDateISO(startDateObj),
+      endDate: formatDateISO(endDateObj),
+      notes: scenario.notes,
+      submittedDate,
+    });
+
+    entries.push(entry);
+
+    if (status === "Validado") {
+      const riskLevel =
+        scenario.priority === "Alta"
+          ? "Alta"
+          : scenario.priority === "Media"
+            ? "Media"
+            : "Baja";
+      const histArr = historyPayload[employee.employeeId] || [];
+      histArr.push(
+        createHistoryRecord(
+          employee.employeeId,
+          reference,
+          formatDateISO(startDateObj),
+          status,
+          riskLevel,
+        ),
+      );
+      historyPayload[employee.employeeId] = histArr;
+    }
+    globalIdx += 1;
+  };
+
+  multiCertEmployees.forEach((emp, idx) => {
+    scenarioTemplates.forEach((scenario, sIdx) => pushEntry(emp, scenario, sIdx));
+  });
+
+  singleCertEmployees.forEach((emp, idx) => {
+    const scenario = scenarioTemplates[idx % scenarioTemplates.length];
+    pushEntry(emp, scenario);
+  });
+
+  const plansPayload = multiCertEmployees.reduce((acc, employee, idx) => {
+    acc[employee.employeeId] = {
+      actions: [
+        "Plan ergonomico personalizado",
+        `Control clinico quincenal ${idx + 1}`,
+      ],
+      followUps: [
+        `Seguimiento kinesiologia ${idx + 5}`,
+        `Evaluacion laboral ${idx + 10}`,
+      ],
+      recommendations: [
+        "Pausas activas y registro de sintomas",
+        "Uso de faja segun criterio medico",
+      ],
+    };
+    return acc;
+  }, {});
+
+  persistWithEvent(
+    MEDICAL_VALIDATIONS_STORAGE_KEY,
+    entries,
+    MEDICAL_VALIDATIONS_UPDATED_EVENT,
+  );
+  persistWithEvent(
+    MEDICAL_HISTORY_STORAGE_KEY,
+    historyPayload,
+    MEDICAL_HISTORY_UPDATED_EVENT,
+  );
+  persistWithEvent(
+    PREVENTIVE_PLANS_STORAGE_KEY,
+    plansPayload,
+    PREVENTIVE_PLANS_UPDATED_EVENT,
+  );
+
+  window.dispatchEvent(new Event("storage"));
+  console.info(
+    "%cSeed dashboard completado",
+    "background:#0f172a;color:#fff;padding:4px 8px;border-radius:6px",
+    "Ejecuta window.runDashboardSeed() para recargar los 50 empleados.",
+  );
+};
+
+if (import.meta.env.MODE !== "production" && typeof window !== "undefined") {
+  window.runDashboardSeed = runDashboardSeed;
+}
