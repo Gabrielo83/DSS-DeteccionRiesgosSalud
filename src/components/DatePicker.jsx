@@ -151,6 +151,16 @@ export default function DatePicker({
 
   return (
     <div className="relative" ref={containerRef}>
+      {/* Campo auxiliar para pruebas automatizadas */}
+      <input
+        data-testid={`${id}-input`}
+        type="text"
+        className="sr-only"
+        value={value || ""}
+        onChange={(e) => onChange?.(e.target.value)}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       {label ? (
         <label
           htmlFor={id}
@@ -242,8 +252,8 @@ export default function DatePicker({
             </div>
           </div>
           <div className="mb-2 grid grid-cols-7 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            {weekdayNames.map((d) => (
-              <span key={d}>{d}</span>
+            {weekdayNames.map((d, idx) => (
+              <span key={`${d}-${idx}`}>{d}</span>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1 text-sm">

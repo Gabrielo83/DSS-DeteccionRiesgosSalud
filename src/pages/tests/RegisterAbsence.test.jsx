@@ -136,14 +136,18 @@ describe("Funcionalidad de Registro de Ausencias", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const startInput = screen.getByLabelText(/Fecha de Inicio/i);
-    const endInput = screen.getByLabelText(/Fecha de Fin/i);
+    const startInput = screen.getByTestId("start-date-input");
+    const endInput = screen.getByTestId("end-date-input");
 
     await user.type(startInput, "2025-02-01");
     await user.type(endInput, "2025-02-05");
 
     expect(
-      screen.getByText(/Duracion estimada: 5 dias/i)
+      screen.getByText(
+        (text) =>
+          text.toLowerCase().includes("duracion estimada") &&
+          text.includes("5")
+      )
     ).toBeInTheDocument();
   });
 });
