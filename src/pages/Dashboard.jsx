@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader.jsx";
 import mockEmployees from "../data/mockEmployees.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
@@ -58,6 +58,31 @@ const AUTO_SYNC_INTERVAL_MS = 150 * 1000;
 const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
   new Date(2024, i, 1).toLocaleDateString("es-AR", { month: "long" }),
 );
+
+const countWorkingDays = (startDate, endDate) => {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start) || Number.isNaN(end) || start > end) return 0;
+  let days = 0;
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    // cuenta lunes a sabado; excluye domingos
+    if (day !== 0) days += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+};
+
+const diffDaysInclusive = (start, end) => {
+  const a = start ? new Date(start) : null;
+  const b = end ? new Date(end) : null;
+  if (!a || !b || Number.isNaN(a) || Number.isNaN(b)) return 0;
+  const diff = Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1;
+  return diff > 0 ? diff : 0;
+};
 
 const formatDateTimeLabel = (value) => {
   if (!value) return "--";
@@ -145,6 +170,11 @@ function Dashboard({ isDark, onToggleTheme }) {
     employee: "",
     records: [],
   });
+  const [heatmapModal, setHeatmapModal] = useState({
+    isOpen: false,
+    sector: "",
+    items: [],
+  });
   const [planModal, setPlanModal] = useState({
     isOpen: false,
     employee: "",
@@ -164,6 +194,14 @@ function Dashboard({ isDark, onToggleTheme }) {
       label: `${MONTH_LABELS[periodMonth]} ${periodYear}`,
     };
   }, [periodMonth, periodYear]);
+  const periodWorkingDays = useMemo(
+    () =>
+      countWorkingDays(
+        new Date(periodYear, periodMonth, 1),
+        new Date(periodYear, periodMonth + 1, 0),
+      ),
+    [periodMonth, periodYear],
+  );
 
   const allHistoryEntries = useMemo(() => {
     const entries = [];
@@ -278,6 +316,76 @@ function Dashboard({ isDark, onToggleTheme }) {
     return avg;
   }, [filteredValidated]);
 
+  const openHeatmapModal = useCallback(
+    (sector) => {
+      const validatedItems = filteredValidated
+        .filter((entry) => {
+          const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+          const entrySector = entry.sector || base?.sector || "Sin sector";
+          return entrySector === sector;
+        })
+        .map((entry) => ({
+          reference: entry.reference || entry.id || "N/A",
+          employee:
+            entry.employee ||
+            (entry.employeeId ? employeeIndexById.get(entry.employeeId)?.fullName : "") ||
+            "Empleado",
+          status: entry.status || "Validado",
+          priority: entry.priority || "--",
+          startDate: entry.startDate || entry.issueDate || entry.issued,
+          endDate: entry.endDate || entry.validityDate,
+          days:
+            entry.absenceDays ||
+            entry.days ||
+            diffDaysInclusive(entry.startDate, entry.endDate) ||
+            null,
+          type:
+            entry.certificateType ||
+            entry.absenceType ||
+            entry.title ||
+            "Certificado",
+          source: "validado",
+        }));
+
+      const queueItems = validationQueue
+        .filter((entry) => {
+          const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+          const entrySector = entry.sector || base?.sector || "Sin sector";
+          return entrySector === sector;
+        })
+        .map((entry) => ({
+          reference: entry.reference || entry.id || "N/A",
+          employee:
+            entry.employee ||
+            (entry.employeeId ? employeeIndexById.get(entry.employeeId)?.fullName : "") ||
+            "Empleado",
+          status: entry.status || "Pendiente",
+          priority: entry.priority || "--",
+          startDate: entry.startDate,
+          endDate: entry.endDate,
+          days:
+            entry.absenceDays ||
+            entry.days ||
+            diffDaysInclusive(entry.startDate, entry.endDate) ||
+            null,
+          type: entry.certificateType || entry.absenceType || "Certificado",
+          source: "cola",
+        }));
+
+      setHeatmapModal({
+        isOpen: true,
+        sector,
+        items: [...validatedItems, ...queueItems],
+      });
+    },
+    [filteredValidated, validationQueue, employeeIndexById],
+  );
+
+  const closeHeatmapModal = useCallback(
+    () => setHeatmapModal({ isOpen: false, sector: "", items: [] }),
+    [],
+  );
+
   const heatmapData = useMemo(() => {
     const sectors = new Set([
       ...headcountBySector.keys(),
@@ -300,8 +408,8 @@ function Dashboard({ isDark, onToggleTheme }) {
       }
       return {
         status: "Riesgo bajo",
-        tone: "from-emerald-500/90 to-sky-400/90",
-      };
+          tone: "from-emerald-500/90 to-sky-400/90",
+        };
     };
 
     const items = Array.from(sectors).map((sector) => {
@@ -326,8 +434,30 @@ function Dashboard({ isDark, onToggleTheme }) {
               return sum + (computed?.score ?? 0);
             }, 0) / validated.length
           : null;
-      const rate = headcount > 0 ? (validated.length / headcount) * 100 : 0;
-      const toneData = classifyTone(rate, avgRisk, alerts);
+      const daysLost = validated.reduce((sum, entry) => {
+        if (entry.absenceDays) return sum + entry.absenceDays;
+        if (entry.days) return sum + entry.days;
+        return sum + diffDaysInclusive(entry.startDate, entry.endDate);
+      }, 0);
+      const available = headcount * periodWorkingDays;
+      const rate = available > 0 ? (daysLost / available) * 100 : 0;
+
+      const classifyTone = () => {
+        // Riesgo se prioriza sobre alertas; alertas empujan a medio salvo que el score sea muy bajo
+        if (avgRisk != null && avgRisk >= 7) {
+          return { status: "Riesgo alto", tone: "from-rose-500/90 to-amber-400/90" };
+        }
+        if (avgRisk != null && avgRisk >= 5) {
+          return { status: "Riesgo medio", tone: "from-amber-400/90 to-lime-400/90" };
+        }
+        // Riesgo bajo (<5): solo sube a medio si hay muchas alertas o tasa alta
+        if (alerts >= 3 || rate >= 12) {
+          return { status: "Riesgo medio", tone: "from-amber-400/90 to-lime-400/90" };
+        }
+        return { status: "Riesgo bajo", tone: "from-emerald-500/90 to-sky-400/90" };
+      };
+
+      const toneData = classifyTone();
       const statsParts = [
         `${validated.length} cert. validados`,
         `${headcount} activos`,
@@ -345,6 +475,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         tone: toneData.tone,
         scoreLabel: avgRisk != null ? `${avgRisk.toFixed(1)}/10` : "--",
         stats: statsParts.join(" • "),
+        onClick: () => openHeatmapModal(sector),
       };
     });
 
@@ -357,19 +488,28 @@ function Dashboard({ isDark, onToggleTheme }) {
   }, [alertsBySector, headcountBySector, validatedBySector]);
 
   const summaryMetrics = useMemo(() => {
-    const totalAbsences = filteredValidated.length;
+    const periodWorkingDays = countWorkingDays(
+      new Date(periodYear, periodMonth, 1),
+      new Date(periodYear, periodMonth + 1, 0),
+    );
+    const totalDaysLost = filteredValidated.reduce((sum, entry) => {
+      if (entry.absenceDays) return sum + entry.absenceDays;
+      if (entry.days) return sum + entry.days;
+      return sum + diffDaysInclusive(entry.startDate, entry.endDate);
+    }, 0);
+    const availableDays = headcountActive * periodWorkingDays;
     const absenteeRate =
-      headcountActive > 0 ? ((totalAbsences / headcountActive) * 100).toFixed(1) : "0.0";
+      availableDays > 0 ? ((totalDaysLost / availableDays) * 100).toFixed(1) : "0.0";
     return [
       {
         title: "Tasa de Ausentismo",
         value: `${absenteeRate}%`,
         badge: periodRange.label,
         badgeVariant: "info",
-        primaryLabel: "Ausencias validadas",
-        primaryValue: totalAbsences,
-        secondaryLabel: "Headcount activo",
-        secondaryValue: headcountActive,
+        primaryLabel: "Dias perdidos",
+        primaryValue: totalDaysLost,
+        secondaryLabel: "Dias laborables x headcount",
+        secondaryValue: availableDays,
       },
       {
         title: "Riesgo Promedio",
@@ -924,9 +1064,12 @@ function Dashboard({ isDark, onToggleTheme }) {
             <div className="mt-6 grid gap-3 md:grid-cols-3">
               {heatmapData.length ? (
                 heatmapData.map((item) => (
-                  <div
+                  <button
                     key={item.sector}
-                    className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner`}
+                    type="button"
+                    onClick={item.onClick}
+                    aria-label={`Ver certificados del sector ${item.sector}`}
+                    className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner transition hover:scale-[1.01] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/40`}
                   >
                     <div className="space-y-1">
                       <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
@@ -954,7 +1097,7 @@ function Dashboard({ isDark, onToggleTheme }) {
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))
               ) : (
                 <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
@@ -1216,6 +1359,90 @@ function Dashboard({ isDark, onToggleTheme }) {
           </div>
         </section>
       </main>
+      {heatmapModal.isOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Sector
+                </p>
+                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                  {heatmapModal.sector || "Sector"}
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Certificados validados y en cola para este sector en el periodo
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeHeatmapModal}
+                className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
+                aria-label="Cerrar detalle de sector"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.8}
+                  stroke="currentColor"
+                  className="h-5 w-5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="max-h-[480px] overflow-y-auto pr-1">
+              {heatmapModal.items.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No hay certificados asociados a este sector en el periodo.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {heatmapModal.items.map((item) => (
+                    <li
+                      key={`${item.reference}-${item.source}-${item.employee}`}
+                      className="rounded-2xl border border-slate-200/70 bg-slate-50 px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/50"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {item.reference} • {item.type}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {item.employee}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="rounded-full border border-slate-200 px-2 py-1 font-semibold uppercase text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                            {item.status}
+                          </span>
+                          <span className="rounded-full bg-white/20 px-2 py-1 font-semibold text-white ring-1 ring-white/30 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700/50">
+                            {item.priority}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+                        {item.startDate && item.endDate ? (
+                          <span>
+                            {formatDateValue(item.startDate)} - {formatDateValue(item.endDate)}
+                          </span>
+                        ) : null}
+                        {item.days ? <span>{item.days} días</span> : null}
+                        <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          {item.source === "validado" ? "Validado" : "En cola"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {historyModal.isOpen ? (
         <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/70 px-4 py-8">
           <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-950">
