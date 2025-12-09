@@ -36,13 +36,17 @@ const seedRegisterAbsence = async () => {
   const nameInput = screen.getByPlaceholderText(/Escribe el nombre del empleado/i);
   await user.type(nameInput, firstEmployee.fullName);
 
-  const startInput = screen.getByLabelText(/Fecha de Inicio/i);
-  const endInput = screen.getByLabelText(/Fecha de Fin/i);
+  // DatePicker usa button; para tests expusimos inputs ocultos
+  const startInput = screen.getByTestId("start-date-input");
+  const endInput = screen.getByTestId("end-date-input");
   await user.type(startInput, "2025-03-01");
   await user.type(endInput, "2025-03-05");
 
   const absenceSelect = screen.getByTestId("dropdown-absenceType");
   await user.selectOptions(absenceSelect, "enfermedad");
+
+  const pathologySelect = screen.getByTestId("dropdown-pathologyCategory");
+  await user.selectOptions(pathologySelect, "musculoesqueletica");
 
   const detailedTextarea = screen.getByPlaceholderText(/Describe el diagnostico/i);
   await user.type(detailedTextarea, "Dolor lumbar intenso con reposo indicado.");
@@ -58,6 +62,7 @@ const seedRegisterAbsence = async () => {
 
   await user.click(screen.getByRole("button", { name: /Enviar para Aprobacion/i }));
 
+  // La app muestra feedback al enviar; se verifica por submissionFeedback en pantalla
   await screen.findByText(/Solicitud enviada para aprobacion/i);
 
   return view;

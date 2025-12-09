@@ -1306,15 +1306,16 @@ const clearCertificateFile = () => {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Grupo de patologia
-                    </label>
-                    <select
-                      value={formValues.pathologyCategory}
-                      onChange={(event) => {
-                        clearError("pathologyCategory");
-                        setFormValues((prev) => ({
-                          ...prev,
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Grupo de patologia
+                  </label>
+                  <select
+                    data-testid="dropdown-pathologyCategory"
+                    value={formValues.pathologyCategory}
+                    onChange={(event) => {
+                      clearError("pathologyCategory");
+                      setFormValues((prev) => ({
+                        ...prev,
                           pathologyCategory: event.target.value,
                         }));
                       }}
