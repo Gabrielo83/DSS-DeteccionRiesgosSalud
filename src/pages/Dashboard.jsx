@@ -111,30 +111,6 @@ const isWithinPeriod = (dateValue, start, end) => {
   return ts >= start && ts <= end;
 };
 
-const sectorRisk = [
-  {
-    name: "Produccion",
-    stats: "12 ausencias - 8 alertas",
-    status: "Riesgo alto",
-    score: "6.9/10",
-    tone: "from-rose-500/90 to-amber-400/90",
-  },
-  {
-    name: "Mantenimiento",
-    stats: "9 ausencias - 5 alertas",
-    status: "Riesgo alto",
-    score: "7.2/10",
-    tone: "from-red-500/90 to-amber-400/90",
-  },
-  {
-    name: "Atencion al cliente",
-    stats: "4 ausencias - 1 alerta",
-    status: "Riesgo medio",
-    score: "5.0/10",
-    tone: "from-amber-400/90 to-lime-300/90",
-  },
-];
-
 /* codigo comentado para referencia futura
 const legendLevels = [
   { label: 'Alto (>= 7)', tone: 'bg-rose-500', description: 'Intervencion inmediata y seguimiento continuo.' },
@@ -150,9 +126,6 @@ const legendLevels = [
   },
 ]
 */
-
-const fallbackEmployees = []
-
 
 function Dashboard({ isDark, onToggleTheme }) {
   const auth = useContext(AuthContext);
@@ -225,6 +198,25 @@ function Dashboard({ isDark, onToggleTheme }) {
     }).length;
   }, [periodRange]);
 
+  const headcountBySector = useMemo(() => {
+    const { startMs, endMs } = periodRange;
+    const map = new Map();
+    mockEmployees.forEach((emp) => {
+      if (emp.active === false) return;
+      const hire = Date.parse(emp.hireDate);
+      const termination = emp.terminationDate
+        ? Date.parse(emp.terminationDate)
+        : null;
+      if (Number.isNaN(hire)) return;
+      const started = hire <= endMs;
+      const notTerminated = !termination || termination >= startMs;
+      if (!started || !notTerminated) return;
+      const sector = emp.sector || "Sin sector";
+      map.set(sector, (map.get(sector) || 0) + 1);
+    });
+    return map;
+  }, [periodRange]);
+
   const filteredValidated = useMemo(() => {
     const { startMs, endMs } = periodRange;
     return allHistoryEntries.filter((entry) => {
@@ -240,6 +232,17 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
   }, [allHistoryEntries, periodRange]);
 
+  const validatedBySector = useMemo(() => {
+    const map = new Map();
+    filteredValidated.forEach((entry) => {
+      const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+      const sector = entry.sector || base?.sector || "Sin sector";
+      if (!map.has(sector)) map.set(sector, []);
+      map.get(sector).push(entry);
+    });
+    return map;
+  }, [filteredValidated]);
+
   const alertsCount = useMemo(() => {
     return validationQueue.filter((entry) => {
       const status = (entry.status || "").toLowerCase();
@@ -247,6 +250,22 @@ function Dashboard({ isDark, onToggleTheme }) {
       const isPending = status.includes("pendiente") || status.includes("revision");
       return priority === "alta" && isPending;
     }).length;
+  }, [validationQueue]);
+
+  const alertsBySector = useMemo(() => {
+    const map = new Map();
+    validationQueue.forEach((entry) => {
+      const status = (entry.status || "").toLowerCase();
+      const priority = (entry.priority || "").toLowerCase();
+      const isPending =
+        status.includes("pendiente") || status.includes("revision");
+      if (priority !== "alta" || !isPending) return;
+      const base =
+        entry.employeeId && employeeIndexById.get(entry.employeeId);
+      const sector = entry.sector || base?.sector || "Sin sector";
+      map.set(sector, (map.get(sector) || 0) + 1);
+    });
+    return map;
   }, [validationQueue]);
 
   const riskAverage = useMemo(() => {
@@ -258,6 +277,84 @@ function Dashboard({ isDark, onToggleTheme }) {
     const avg = scores.reduce((sum, val) => sum + val, 0) / scores.length;
     return avg;
   }, [filteredValidated]);
+
+  const heatmapData = useMemo(() => {
+    const sectors = new Set([
+      ...headcountBySector.keys(),
+      ...validatedBySector.keys(),
+      ...alertsBySector.keys(),
+    ]);
+
+    const classifyTone = (rate, avgRisk, alerts) => {
+      if (alerts > 0 || (avgRisk != null && avgRisk >= 7) || rate >= 10) {
+        return {
+          status: "Riesgo alto",
+          tone: "from-rose-500/90 to-amber-400/90",
+        };
+      }
+      if ((avgRisk != null && avgRisk >= 5) || rate >= 6) {
+        return {
+          status: "Riesgo medio",
+          tone: "from-amber-400/90 to-lime-400/90",
+        };
+      }
+      return {
+        status: "Riesgo bajo",
+        tone: "from-emerald-500/90 to-sky-400/90",
+      };
+    };
+
+    const items = Array.from(sectors).map((sector) => {
+      const headcount = headcountBySector.get(sector) || 0;
+      const validated = validatedBySector.get(sector) || [];
+      const alerts = alertsBySector.get(sector) || 0;
+      const avgRisk =
+        validated.length > 0
+          ? validated.reduce((sum, entry) => {
+              const manual =
+                extractScoreValue(entry.riskScoreValue ?? entry.riskScore);
+              if (manual != null) return sum + manual;
+              const computed = calculateRiskScore({
+                absenceType:
+                  entry.absenceType ||
+                  entry.certificateType ||
+                  entry.title ||
+                  "",
+                detailedReason:
+                  entry.detailedReason || entry.notes || entry.detail || "",
+              });
+              return sum + (computed?.score ?? 0);
+            }, 0) / validated.length
+          : null;
+      const rate = headcount > 0 ? (validated.length / headcount) * 100 : 0;
+      const toneData = classifyTone(rate, avgRisk, alerts);
+      const statsParts = [
+        `${validated.length} cert. validados`,
+        `${headcount} activos`,
+      ];
+      if (alerts > 0) statsParts.push(`${alerts} alertas`);
+
+      return {
+        sector,
+        headcount,
+        validatedCount: validated.length,
+        alerts,
+        avgRisk,
+        rate,
+        status: toneData.status,
+        tone: toneData.tone,
+        scoreLabel: avgRisk != null ? `${avgRisk.toFixed(1)}/10` : "--",
+        stats: statsParts.join(" • "),
+      };
+    });
+
+    return items.sort(
+      (a, b) =>
+        (b.avgRisk ?? 0) - (a.avgRisk ?? 0) ||
+        b.alerts - a.alerts ||
+        b.rate - a.rate,
+    );
+  }, [alertsBySector, headcountBySector, validatedBySector]);
 
   const summaryMetrics = useMemo(() => {
     const totalAbsences = filteredValidated.length;
@@ -768,34 +865,50 @@ function Dashboard({ isDark, onToggleTheme }) {
               </button>
             </header>
             <div className="mt-6 grid gap-3 md:grid-cols-3">
-              {sectorRisk.map((item) => (
-                <div
-                  key={item.name}
-                  className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner`}
-                >
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
-                      Sector
-                    </p>
-                    <h3 className="text-xl font-semibold">{item.name}</h3>
-                    <p className="text-sm opacity-90">{item.stats}</p>
-                  </div>
-                  <div className="mt-6 flex items-end justify-between">
+              {heatmapData.length ? (
+                heatmapData.map((item) => (
+                  <div
+                    key={item.sector}
+                    className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner`}
+                  >
                     <div className="space-y-1">
-                      <p className="text-xs font-medium uppercase tracking-wide opacity-80">
-                        Estado
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                        Sector
                       </p>
-                      <p className="text-sm font-semibold">{item.status}</p>
+                      <h3 className="text-xl font-semibold">{item.sector}</h3>
+                      <p className="text-sm opacity-90">{item.stats}</p>
                     </div>
-                    <p className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold">
-                      {item.score}
-                    </p>
+                    <div className="mt-6 flex items-end justify-between">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+                          Estado
+                        </p>
+                        <p className="text-sm font-semibold">{item.status}</p>
+                        <p className="text-[11px] opacity-90">
+                          Tasa: {item.rate.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold">
+                          {item.scoreLabel}
+                        </p>
+                        <p className="mt-1 text-[11px] opacity-90">
+                          Alertas: {item.alerts}
+                        </p>
+                      </div>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                  Aun no hay datos validados en el periodo seleccionado. Ejecuta{" "}
+                  <code>window.runDemoSeed()</code> para ver un ejemplo o registra
+                  certificados.
                 </div>
-              ))}
+              )}
             </div>
             <p className="mt-4 text-xs text-slate-600 dark:text-slate-400">
-              Alto (&gt;= 7): intervencion inmediata - Medio (5 - 6.9):
+              Alto (&gt;= 7) o alertas: intervencion inmediata - Medio (5 - 6.9):
               monitoreo continuo - Bajo (&lt; 5): seguimiento general
             </p>
           </article>
