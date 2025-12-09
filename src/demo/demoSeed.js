@@ -281,6 +281,68 @@ if (import.meta.env.MODE !== "production" && typeof window !== "undefined") {
 }
 
 /**
+ * Seed enfocado en la evolucion de riesgo promedio:
+ * - Crea historicos validados para 50 empleados entre enero y diciembre del anio actual.
+ * - Cada mes aporta riesgos variados (bajo/medio/alto) para que el grafico muestre tendencia.
+ * - Limpia la cola de validacion (solo historicos).
+ */
+export const runRiskTrendSeed = () => {
+  if (typeof window === "undefined") return;
+  const now = new Date();
+  const baseYear = now.getFullYear();
+  const employees = mockEmployees.slice(0, 50);
+  const historyPayload = {};
+
+  const riskLevels = ["Baja", "Media", "Alta", "Media", "Baja", "Media", "Alta", "Media", "Baja", "Media", "Alta", "Media"];
+
+  employees.forEach((emp, idx) => {
+    const records = [];
+    for (let month = 0; month < 12; month += 1) {
+      const riskLevel = riskLevels[month % riskLevels.length];
+      const issueDate = new Date(baseYear, month, 10 + (idx % 5));
+      const reference = `CM-TREND-${String(idx + 1).padStart(3, "0")}-${String(month + 1).padStart(2, "0")}`;
+      records.push(
+        createHistoryRecord(
+          emp.employeeId,
+          reference,
+          formatDateISO(issueDate),
+          "Validado",
+          riskLevel,
+        ),
+      );
+    }
+    historyPayload[emp.employeeId] = records;
+  });
+
+  persistWithEvent(
+    MEDICAL_VALIDATIONS_STORAGE_KEY,
+    [],
+    MEDICAL_VALIDATIONS_UPDATED_EVENT,
+  );
+  persistWithEvent(
+    MEDICAL_HISTORY_STORAGE_KEY,
+    historyPayload,
+    MEDICAL_HISTORY_UPDATED_EVENT,
+  );
+  persistWithEvent(
+    PREVENTIVE_PLANS_STORAGE_KEY,
+    {},
+    PREVENTIVE_PLANS_UPDATED_EVENT,
+  );
+
+  window.dispatchEvent(new Event("storage"));
+  console.info(
+    "%cSeed tendencia riesgo cargado",
+    "background:#0f172a;color:#fff;padding:4px 8px;border-radius:6px",
+    "Ejecuta window.runRiskTrendSeed() para regenerarlo.",
+  );
+};
+
+if (import.meta.env.MODE !== "production" && typeof window !== "undefined") {
+  window.runRiskTrendSeed = runRiskTrendSeed;
+}
+
+/**
  * Seed extendido para pruebas del dashboard:
  * - 50 empleados con certificados en cola de validacion
  * - Los primeros 10 empleados tienen 4 certificados cada uno (para disparar indicadores)
