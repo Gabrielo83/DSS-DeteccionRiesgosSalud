@@ -201,6 +201,7 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
     isOpen: false,
     certificate: null,
   });
+  const [showEmployeeList, setShowEmployeeList] = useState(false);
 
   const certificates = useMemo(() => {
     const profile = selectedRecord.profile;
@@ -427,6 +428,15 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
                 <option key={record.profile.id} value={record.profile.name} />
               ))}
             </datalist>
+            <div className="flex flex-wrap gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowEmployeeList(true)}
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600"
+              >
+                Ver todos los empleados
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
@@ -667,6 +677,65 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
           </SectionCard>
         </div>
       </main>
+      {showEmployeeList ? (
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/60 px-3 py-8 sm:px-6">
+          <div className="relative w-full max-w-3xl rounded-3xl bg-white p-5 shadow-2xl dark:bg-slate-950 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Listado de empleados
+                </p>
+                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                  Nombre y sector
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Vista rapida de todos los colaboradores para seleccion rapida.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEmployeeList(false)}
+                className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300"
+                aria-label="Cerrar listado"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="h-4 w-4"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.22 5.22a.75.75 0 011.06 0L10 8.94l3.72-3.72a.75.75 0 111.06 1.06L11.06 10l3.72 3.72a.75.75 0 11-1.06 1.06L10 11.06l-3.72 3.72a.75.75 0 11-1.06-1.06L8.94 10 5.22 6.28a.75.75 0 010-1.06z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-[520px] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700 shadow-inner dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200">
+              <ul className="space-y-2">
+                {mockEmployees
+                  .slice()
+                  .sort((a, b) => a.fullName.localeCompare(b.fullName))
+                  .map((emp) => (
+                    <li
+                      key={emp.employeeId}
+                      className="flex items-center justify-between rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100 dark:bg-slate-900 dark:ring-slate-800"
+                    >
+                      <span className="font-semibold text-slate-900 dark:text-white">
+                        {emp.fullName}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {emp.sector}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {documentViewer.isOpen && activeDocument ? (
         <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/70 px-4 py-8">
           <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-950">

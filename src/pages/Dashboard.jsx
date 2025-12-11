@@ -318,6 +318,63 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   const openHeatmapModal = useCallback(
     (sector) => {
+      const validatedItems = filteredValidated
+        .filter((entry) => {
+          const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+          const entrySector = entry.sector || base?.sector || "Sin sector";
+          const score =
+            extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ??
+            calculateRiskScore({
+              absenceType:
+                entry.absenceType ||
+                entry.certificateType ||
+                entry.title ||
+                "",
+              detailedReason:
+                entry.detailedReason || entry.notes || entry.detail || "",
+            })?.score ??
+            0;
+          return entrySector === sector && score >= 5;
+        })
+        .map((entry) => {
+          const score =
+            extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ??
+            calculateRiskScore({
+              absenceType:
+                entry.absenceType ||
+                entry.certificateType ||
+                entry.title ||
+                "",
+              detailedReason:
+                entry.detailedReason || entry.notes || entry.detail || "",
+            })?.score ??
+            0;
+          const level = mapScoreToRisk(score).level;
+          return {
+            reference: entry.reference || entry.id || "N/A",
+            employee:
+              entry.employee ||
+              (entry.employeeId ? employeeIndexById.get(entry.employeeId)?.fullName : "") ||
+              "Empleado",
+            status: entry.status || "Validado",
+            priority: level === "Alta" ? "Alta" : level === "Media" ? "Media" : "Baja",
+            startDate: entry.startDate || entry.issueDate || entry.issued,
+            endDate: entry.endDate || entry.validityDate,
+            days:
+              entry.absenceDays ||
+              entry.days ||
+              diffDaysInclusive(entry.startDate, entry.endDate) ||
+              null,
+            type:
+              entry.certificateType ||
+              entry.absenceType ||
+              entry.title ||
+              "Certificado",
+            source: "validado",
+            riskScore: score,
+          };
+        });
+
       const queueItems = validationQueue
         .filter((entry) => {
           const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
@@ -345,6 +402,7 @@ function Dashboard({ isDark, onToggleTheme }) {
             null,
           type: entry.certificateType || entry.absenceType || "Certificado",
           source: "cola",
+          riskScore: extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ?? null,
         }))
         .sort((a, b) => {
           const pa = (a.priority || "").toLowerCase();
@@ -360,7 +418,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       setHeatmapModal({
         isOpen: true,
         sector,
-        items: queueItems.map((item) => ({
+        items: [...validatedItems, ...queueItems].map((item) => ({
           ...item,
           sectorHeadcount: {
             active: headcountBySector.get(sector) || 0,
@@ -537,7 +595,8 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   const trendData = useMemo(() => {
     const months = [];
-    const base = new Date(periodYear, periodMonth, 1);
+    // Fijamos la base en el mes actual para que la serie no cambie al mover el selector
+    const base = new Date(today.getFullYear(), today.getMonth(), 1);
     for (let i = 11; i >= 0; i -= 1) {
       const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
       months.push({
@@ -758,7 +817,7 @@ function Dashboard({ isDark, onToggleTheme }) {
           riskScoreValue: entry.riskScoreValue,
           riskScore: entry.riskScore,
         },
-        { isCountable: false },
+        { isCountable: true },
       );
     });
 
@@ -1374,7 +1433,7 @@ function Dashboard({ isDark, onToggleTheme }) {
                   {heatmapModal.sector || "Sector"}
                 </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Certificados en alerta (pendientes) para este sector en el periodo
+                    Certificados en alerta para este sector en el periodo
                   </p>
                 <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
                   HC activos:{" "}

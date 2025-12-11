@@ -397,6 +397,12 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     employeeId: "",
     records: [],
   });
+  const [historyFilters, setHistoryFilters] = useState({
+    status: "todos",
+    risk: "todos",
+    dateFrom: "",
+    dateTo: "",
+  });
   const riskScoreDetails = useMemo(() => {
     if (riskScoreInput == null) return null;
     return mapScoreToRisk(riskScoreInput);
@@ -410,6 +416,25 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     message: "",
     tone: "bg-slate-900 text-white",
   });
+  const filteredHistoryRecords = useMemo(() => {
+    const status = historyFilters.status.toLowerCase();
+    const risk = historyFilters.risk.toLowerCase();
+    const from = historyFilters.dateFrom ? Date.parse(historyFilters.dateFrom) : null;
+    const to = historyFilters.dateTo ? Date.parse(historyFilters.dateTo) : null;
+    return (historyModal.records || []).filter((record) => {
+      const statusMatch =
+        status === "todos" ||
+        (record.status || "").toLowerCase().includes(status);
+      const riskMatch =
+        risk === "todos" ||
+        (record.riskLevel || record.riskLabel || "").toLowerCase().includes(risk);
+      const issuedTs = record.issued ? Date.parse(record.issued) : null;
+      const dateMatch =
+        (from === null || (issuedTs != null && issuedTs >= from)) &&
+        (to === null || (issuedTs != null && issuedTs <= to));
+      return statusMatch && riskMatch && dateMatch;
+    });
+  }, [historyModal.records, historyFilters]);
 
   const handleValidationAction = (actionType) => {
     if (!selectedCertificate) return;
@@ -621,14 +646,48 @@ function MedicalValidation({ isDark, onToggleTheme }) {
   };
 
   const openHistoryModal = (row) => {
-    const employeeKey = row.employeeId || row.employee;
-    const records = readEmployeeHistory(employeeKey);
+    const resolvedId =
+      row.employeeId ||
+      mockEmployees.find(
+        (emp) => emp.fullName?.toLowerCase() === (row.employee || "").toLowerCase(),
+      )?.employeeId ||
+      row.employee;
+    const records = readEmployeeHistory(resolvedId);
+    const queueMatches = combinedValidations.filter(
+      (item) =>
+        (item.employeeId && item.employeeId === resolvedId) ||
+        (item.employee &&
+          item.employee.toLowerCase() === (row.employee || "").toLowerCase()),
+    );
+    const combined = [
+      ...records,
+      ...queueMatches.map((item) => ({
+        id: item.reference || `${item.employee}-${item.receivedTimestamp || Date.now()}`,
+        reference: item.reference,
+        title: item.certificateType || item.absenceType || "Certificado en cola",
+        employee: item.employee,
+        sector: item.sector,
+        issued: item.issueDate || item.startDate || item.submitted || item.received,
+        days:
+          item.absenceDays ??
+          getDaysBetween(item.startDate, item.endDate) ??
+          "-",
+        status: item.status || "Pendiente",
+        institution: item.institution || "No indicado",
+        notes: item.notes || item.detailedReason || "Sin observaciones",
+        riskScore: item.riskScoreValue ?? item.riskScore ?? null,
+        riskLevel: item.riskLevel || null,
+        document: item.certificateFileMeta?.name || "",
+        documentMeta: item.certificateFileMeta || null,
+      })),
+    ];
     setHistoryModal({
       isOpen: true,
       employee: row.employee,
-      employeeId: row.employeeId || "Sin ID",
-      records,
+      employeeId: resolvedId || "Sin ID",
+      records: combined,
     });
+    setHistoryFilters({ status: "todos", risk: "todos", dateFrom: "", dateTo: "" });
   };
 
   const closeHistoryModal = () =>
@@ -1720,12 +1779,70 @@ function MedicalValidation({ isDark, onToggleTheme }) {
               </button>
             </div>
             <div className="mt-5 space-y-4">
-              {historyModal.records.length === 0 ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
+                  <select
+                    value={historyFilters.status}
+                    onChange={(e) =>
+                      setHistoryFilters((prev) => ({
+                        ...prev,
+                        status: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+                  >
+                    <option value="todos">Estado: todos</option>
+                    <option value="validado">Validados</option>
+                    <option value="pendiente">Pendientes</option>
+                    <option value="revision">En revision</option>
+                    <option value="rechazado">Rechazados</option>
+                  </select>
+                  <select
+                    value={historyFilters.risk}
+                    onChange={(e) =>
+                      setHistoryFilters((prev) => ({
+                        ...prev,
+                        risk: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+                  >
+                    <option value="todos">Riesgo: todos</option>
+                    <option value="alta">Alta</option>
+                    <option value="media">Media</option>
+                    <option value="baja">Baja</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={historyFilters.dateFrom}
+                    onChange={(e) =>
+                      setHistoryFilters((prev) => ({
+                        ...prev,
+                        dateFrom: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+                  />
+                  <input
+                    type="date"
+                    value={historyFilters.dateTo}
+                    onChange={(e) =>
+                      setHistoryFilters((prev) => ({
+                        ...prev,
+                        dateTo: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+                  />
+                </div>
+              </div>
+
+              {filteredHistoryRecords.length === 0 ? (
                 <div className="rounded-3xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-300">
                   Aun no se registran antecedentes para este colaborador.
                 </div>
               ) : null}
-              {historyModal.records.map((record, index) => {
+              {filteredHistoryRecords.map((record, index) => {
                 const issuedLabel =
                   formatDateValue(record.issued) || record.issued || "No indicado";
                 const diagnosis =

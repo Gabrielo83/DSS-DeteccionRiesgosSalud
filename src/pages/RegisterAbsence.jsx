@@ -217,6 +217,7 @@ const createInitialFormValues = () => ({
   requiresApproval: "si",
   pathologyCategory: "",
   cieCode: "",
+  additionalNotes: "",
 });
 
 function RegisterAbsence({ isDark, onToggleTheme }) {
@@ -785,7 +786,7 @@ const clearCertificateFile = () => {
     const correctionNote = activeRevisionEntry
       ? `Correccion enviada por ${currentUserName} el ${submissionTimestamp}.`
       : `Carga realizada desde Registro de Ausencias por ${currentUserName} el ${submissionTimestamp}.`;
-    const combinedNotes = [previousNotes, correctionNote]
+    const combinedNotes = [previousNotes, correctionNote, formValues.additionalNotes]
       .filter(Boolean)
       .join(previousNotes ? " | " : "");
     const certificateMeta =
@@ -1359,6 +1360,13 @@ const clearCertificateFile = () => {
                   <textarea
                     rows="2"
                     placeholder="Informacion adicional relevante..."
+                    value={formValues.additionalNotes}
+                    onChange={(event) =>
+                      setFormValues((prev) => ({
+                        ...prev,
+                        additionalNotes: event.target.value,
+                      }))
+                    }
                     className={textareaClasses}
                   />
                 </div>

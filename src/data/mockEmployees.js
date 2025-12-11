@@ -1,11 +1,12 @@
+// Distribucion fija de 80 empleados (suma 80)
 const SECTOR_QUOTAS = [
   { sector: "Recursos Humanos", count: 5, position: "Analista RRHH" },
   { sector: "Salud Ocupacional", count: 5, position: "Profesional Salud Ocup." },
-  { sector: "Seguridad Ocupacional", count: 10, position: "Tec. Seguridad" },
-  { sector: "Producción", count: 20, position: "Operario" },
-  { sector: "Ventas", count: 20, position: "Ejecutivo Comercial" },
-  { sector: "Administración", count: 20, position: "Analista Administrativo" },
-  { sector: "Comercialización", count: 20, position: "Asesor Comercial" },
+  { sector: "Seguridad Ocupacional", count: 8, position: "Tec. Seguridad" },
+  { sector: "Producción", count: 16, position: "Operario" },
+  { sector: "Ventas", count: 16, position: "Ejecutivo Comercial" },
+  { sector: "Administración", count: 15, position: "Analista Administrativo" },
+  { sector: "Comercialización", count: 15, position: "Asesor Comercial" },
 ];
 
 const FIRST_NAMES = [
@@ -30,13 +31,27 @@ const LAST_NAMES = [
 
 const BLOOD_TYPES = ["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"];
 
-const randomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
+// PRNG deterministico para mantener la misma "base" en cada carga
+const SEED = 123456;
+const mulberry32 = (seed) => {
+  let t = seed;
+  return () => {
+    t += 0x6d2b79f5;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+};
+const rng = mulberry32(SEED);
+
+const randomItem = (arr) => arr[Math.floor(rng() * arr.length)];
 const pad = (value) => String(value).padStart(3, "0");
 
 const randomDateBetween = (start, end) => {
   const startMs = start.getTime();
   const endMs = end.getTime();
-  const date = new Date(startMs + Math.random() * (endMs - startMs));
+  const date = new Date(startMs + rng() * (endMs - startMs));
   return date.toISOString().slice(0, 10);
 };
 
@@ -54,7 +69,7 @@ const buildEmployees = () => {
       const employeeId = `LEG-${pad(idCounter)}`;
       const medicalRecordId = `MED-${pad(idCounter + 200)}`;
       const hireDate = randomDateBetween(startBase, today);
-      const isActive = Math.random() > 0.15; // ~85% activos
+      const isActive = rng() > 0.15; // ~85% activos pero deterministico
       const terminationDate = isActive
         ? null
         : randomDateBetween(new Date(hireDate), today);
@@ -77,37 +92,7 @@ const buildEmployees = () => {
     }
   });
 
-  // si faltan por redondeos, rellena hasta 100
-  while (employees.length < 100) {
-    const first = randomItem(FIRST_NAMES);
-    const last = randomItem(LAST_NAMES);
-    const fullName = `${first} ${last}`;
-    const employeeId = `LEG-${pad(idCounter)}`;
-    const medicalRecordId = `MED-${pad(idCounter + 200)}`;
-    const hireDate = randomDateBetween(startBase, today);
-    const isActive = Math.random() > 0.15;
-    const terminationDate = isActive
-      ? null
-      : randomDateBetween(new Date(hireDate), today);
-    employees.push({
-      employeeId,
-      medicalRecordId,
-      fullName,
-      sector: "Comercialización",
-      position: "Asesor Comercial",
-      email: `${first.toLowerCase()}.${last.toLowerCase()}${idCounter}@empresa.com`,
-      phone: `+54 9 11 4567-${String(1000 + idCounter).slice(-4)}`,
-      bloodType: randomItem(BLOOD_TYPES),
-      seniority: `${1 + (idCounter % 15)} anos`,
-      avatar: `https://i.pravatar.cc/150?img=${(idCounter % 70) + 1}`,
-      active: isActive,
-      hireDate,
-      terminationDate,
-    });
-    idCounter += 1;
-  }
-
-  return employees.slice(0, 100);
+  return employees; // exactamente 80 registros fijos
 };
 
 export const mockEmployees = buildEmployees();
