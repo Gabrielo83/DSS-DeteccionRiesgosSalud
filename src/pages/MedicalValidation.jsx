@@ -398,8 +398,6 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     records: [],
   });
   const [historyFilters, setHistoryFilters] = useState({
-    status: "todos",
-    risk: "todos",
     dateFrom: "",
     dateTo: "",
   });
@@ -417,22 +415,51 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     tone: "bg-slate-900 text-white",
   });
   const filteredHistoryRecords = useMemo(() => {
-    const status = historyFilters.status.toLowerCase();
-    const risk = historyFilters.risk.toLowerCase();
-    const from = historyFilters.dateFrom ? Date.parse(historyFilters.dateFrom) : null;
-    const to = historyFilters.dateTo ? Date.parse(historyFilters.dateTo) : null;
+    const parseISOInputDate = (value, mode) => {
+      if (!value) return null;
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (!match) return null;
+      const [, y, m, d] = match;
+      if (mode === "end") {
+        return new Date(Number(y), Number(m) - 1, Number(d), 23, 59, 59, 999).getTime();
+      }
+      return new Date(Number(y), Number(m) - 1, Number(d), 0, 0, 0, 0).getTime();
+    };
+
+    const parseFlexibleDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value.getTime();
+      if (typeof value !== "string") return null;
+      const raw = value.trim();
+      const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+      if (iso) {
+        const [, y, m, d] = iso;
+        return new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+      }
+      const dmy = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(raw);
+      if (dmy) {
+        const [, d, m, y] = dmy;
+        return new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+      }
+      const parsed = Date.parse(raw);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    const from = parseISOInputDate(historyFilters.dateFrom, "start");
+    const to = parseISOInputDate(historyFilters.dateTo, "end");
     return (historyModal.records || []).filter((record) => {
-      const statusMatch =
-        status === "todos" ||
-        (record.status || "").toLowerCase().includes(status);
-      const riskMatch =
-        risk === "todos" ||
-        (record.riskLevel || record.riskLabel || "").toLowerCase().includes(risk);
-      const issuedTs = record.issued ? Date.parse(record.issued) : null;
+      const issuedTs = parseFlexibleDate(
+        record.startDate ||
+          record.issueDate ||
+          record.issued ||
+          record.submitted ||
+          record.received ||
+          "",
+      );
       const dateMatch =
         (from === null || (issuedTs != null && issuedTs >= from)) &&
         (to === null || (issuedTs != null && issuedTs <= to));
-      return statusMatch && riskMatch && dateMatch;
+      return dateMatch;
     });
   }, [historyModal.records, historyFilters]);
 
@@ -659,9 +686,19 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         (item.employee &&
           item.employee.toLowerCase() === (row.employee || "").toLowerCase()),
     );
-    const combined = [
-      ...records,
-      ...queueMatches.map((item) => ({
+    const recordMap = new Map();
+    const makeKey = (entry) =>
+      entry?.reference || entry?.id || `${entry?.title || "registro"}-${entry?.issued || ""}`;
+
+    // Prioriza el historial persistido; evita duplicar si la cola contiene la misma referencia
+    (records || []).forEach((record) => {
+      const key = makeKey(record);
+      if (!key) return;
+      recordMap.set(key, record);
+    });
+
+    queueMatches.forEach((item) => {
+      const normalized = {
         id: item.reference || `${item.employee}-${item.receivedTimestamp || Date.now()}`,
         reference: item.reference,
         title: item.certificateType || item.absenceType || "Certificado en cola",
@@ -679,15 +716,26 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         riskLevel: item.riskLevel || null,
         document: item.certificateFileMeta?.name || "",
         documentMeta: item.certificateFileMeta || null,
-      })),
-    ];
+      };
+      const key = makeKey(normalized);
+      if (!key) return;
+      if (!recordMap.has(key)) {
+        recordMap.set(key, normalized);
+      }
+    });
+
+    const combined = Array.from(recordMap.values()).sort((a, b) => {
+      const aTs = Date.parse(a.issued || a.submitted || a.startDate || "") || 0;
+      const bTs = Date.parse(b.issued || b.submitted || b.startDate || "") || 0;
+      return bTs - aTs;
+    });
     setHistoryModal({
       isOpen: true,
       employee: row.employee,
       employeeId: resolvedId || "Sin ID",
       records: combined,
     });
-    setHistoryFilters({ status: "todos", risk: "todos", dateFrom: "", dateTo: "" });
+    setHistoryFilters({ dateFrom: "", dateTo: "" });
   };
 
   const closeHistoryModal = () =>
@@ -1781,37 +1829,6 @@ function MedicalValidation({ isDark, onToggleTheme }) {
             <div className="mt-5 space-y-4">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
-                  <select
-                    value={historyFilters.status}
-                    onChange={(e) =>
-                      setHistoryFilters((prev) => ({
-                        ...prev,
-                        status: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-600 dark:focus:ring-slate-800"
-                  >
-                    <option value="todos">Estado: todos</option>
-                    <option value="validado">Validados</option>
-                    <option value="pendiente">Pendientes</option>
-                    <option value="revision">En revision</option>
-                    <option value="rechazado">Rechazados</option>
-                  </select>
-                  <select
-                    value={historyFilters.risk}
-                    onChange={(e) =>
-                      setHistoryFilters((prev) => ({
-                        ...prev,
-                        risk: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-600 dark:focus:ring-slate-800"
-                  >
-                    <option value="todos">Riesgo: todos</option>
-                    <option value="alta">Alta</option>
-                    <option value="media">Media</option>
-                    <option value="baja">Baja</option>
-                  </select>
                   <input
                     type="date"
                     value={historyFilters.dateFrom}
