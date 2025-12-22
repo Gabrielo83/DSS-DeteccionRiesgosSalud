@@ -318,6 +318,55 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   const openHeatmapModal = useCallback(
     (sector) => {
+      const { startMs, endMs } = periodRange;
+      const totalsByEmployee = new Map();
+
+      const registerTotal = (employeeKey, days) => {
+        if (!employeeKey) return;
+        const safeDays = Number.isFinite(days) ? days : Number(days);
+        const increment = Number.isFinite(safeDays) ? safeDays : 0;
+        const current = totalsByEmployee.get(employeeKey) || { days: 0, count: 0 };
+        totalsByEmployee.set(employeeKey, {
+          days: current.days + increment,
+          count: current.count + 1,
+        });
+      };
+
+      // Totaliza todos los certificados del periodo (validados + cola) para el sector,
+      // independientemente de si luego se muestran o no por criterio de riesgo.
+      allHistoryEntries.forEach((entry) => {
+        const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+        const entrySector = entry.sector || base?.sector || "Sin sector";
+        if (entrySector !== sector) return;
+        const candidateDate =
+          entry.startDate ||
+          entry.issueDate ||
+          entry.issued ||
+          entry.validityDate ||
+          entry.updatedAt;
+        if (!isWithinPeriod(candidateDate, startMs, endMs)) return;
+        const days =
+          entry.absenceDays ||
+          entry.days ||
+          diffDaysInclusive(entry.startDate, entry.endDate) ||
+          0;
+        registerTotal(entry.employeeId || entry.employee, days);
+      });
+
+      validationQueue.forEach((entry) => {
+        const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+        const entrySector = entry.sector || base?.sector || "Sin sector";
+        if (entrySector !== sector) return;
+        const candidateDate = entry.startDate || entry.submitted || entry.issueDate;
+        if (!isWithinPeriod(candidateDate, startMs, endMs)) return;
+        const days =
+          entry.absenceDays ||
+          entry.days ||
+          diffDaysInclusive(entry.startDate, entry.endDate) ||
+          0;
+        registerTotal(entry.employeeId || entry.employee, days);
+      });
+
       const validatedItems = filteredValidated
         .filter((entry) => {
           const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
@@ -350,8 +399,10 @@ function Dashboard({ isDark, onToggleTheme }) {
             })?.score ??
             0;
           const level = mapScoreToRisk(score).level;
+          const totals = totalsByEmployee.get(entry.employeeId || entry.employee) || null;
           return {
             reference: entry.reference || entry.id || "N/A",
+            employeeId: entry.employeeId || "",
             employee:
               entry.employee ||
               (entry.employeeId ? employeeIndexById.get(entry.employeeId)?.fullName : "") ||
@@ -372,6 +423,8 @@ function Dashboard({ isDark, onToggleTheme }) {
               "Certificado",
             source: "validado",
             riskScore: score,
+            employeePeriodDaysTotal: totals?.days ?? null,
+            employeePeriodCertificatesTotal: totals?.count ?? null,
           };
         });
 
@@ -387,6 +440,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         })
         .map((entry) => ({
           reference: entry.reference || entry.id || "N/A",
+          employeeId: entry.employeeId || "",
           employee:
             entry.employee ||
             (entry.employeeId ? employeeIndexById.get(entry.employeeId)?.fullName : "") ||
@@ -403,6 +457,10 @@ function Dashboard({ isDark, onToggleTheme }) {
           type: entry.certificateType || entry.absenceType || "Certificado",
           source: "cola",
           riskScore: extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ?? null,
+          employeePeriodDaysTotal:
+            totalsByEmployee.get(entry.employeeId || entry.employee)?.days ?? null,
+          employeePeriodCertificatesTotal:
+            totalsByEmployee.get(entry.employeeId || entry.employee)?.count ?? null,
         }))
         .sort((a, b) => {
           const pa = (a.priority || "").toLowerCase();
@@ -426,7 +484,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         })),
       });
     },
-    [filteredValidated, validationQueue, employeeIndexById, headcountBySector],
+    [filteredValidated, validationQueue, employeeIndexById, headcountBySector, allHistoryEntries, periodRange],
   );
 
   const closeHeatmapModal = useCallback(
@@ -1506,6 +1564,11 @@ function Dashboard({ isDark, onToggleTheme }) {
                           </span>
                         ) : null}
                         {item.days ? <span>{item.days} días</span> : null}
+                        {item.employeePeriodCertificatesTotal > 1 ? (
+                          <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                            Total empleado: {Math.round(item.employeePeriodDaysTotal || 0)} días ({item.employeePeriodCertificatesTotal})
+                          </span>
+                        ) : null}
                         <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                           {item.source === "validado" ? "Validado" : "En cola"}
                         </span>
