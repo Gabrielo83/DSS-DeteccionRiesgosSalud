@@ -70,3 +70,11 @@ window.runDemoSeed()
 ---
 
 Si Necesitás regenerar datos de demo ejecutá `window.runDemoSeed()` en la consola del navegador y se precargan ~20 certificados, historiales y planes preventivos para la presentación.\*\*\*
+
+## Firebase (configuracion inicial)
+
+1. Crear un proyecto en Firebase.
+2. Registrar una Web App y copiar las credenciales.
+3. Completar en `.env` las variables `VITE_FIREBASE_*` (ver `.env.example`).
+4. Instalar dependencias si corresponde:
+   - `npm install`
