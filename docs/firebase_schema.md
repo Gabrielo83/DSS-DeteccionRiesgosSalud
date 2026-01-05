@@ -14,12 +14,17 @@
 
 2) `ausencias/{absenceId}`
 - absenceId (string)
+- referenciaCertificado (string, opcional)
 - employeeId
 - nombreCompleto
 - sector
 - puesto
 - tipo (accidente/enfermedad/...)
 - diagnostico
+- requiereAprobacion (si/no)
+- grupoPatologia
+- cie10
+- observacionesAdicionales
 - fechaInicio (timestamp)
 - fechaFin (timestamp)
 - dias (number)
@@ -39,13 +44,25 @@
 - sector
 - puesto
 - tipo, diagnostico
+- tipoCertificado
 - fechaInicio, fechaFin, dias
+- fechaEmision, fechaValidez
 - institucionMedica
 - prioridad (Alta/Media/Baja)
 - estado (pendiente | en_revision | validado | rechazado)
 - riesgoPuntaje (number)
 - riesgoNivel (alta/media/baja)
 - notasMedicas
+- grupoPatologia
+- cie10
+- certificadoDigital
+  - nombre
+  - tamano
+  - tipoContenido
+  - rutaStorage
+- planAcciones[]
+- planSeguimientos[]
+- planRecomendaciones[]
 - revisadoPor, revisadoEn
 - creadoEn, actualizadoEn
 
@@ -56,10 +73,23 @@
 - sector
 - puesto
 - tipo, diagnostico
+- tipoCertificado
 - fechaInicio, fechaFin, dias
+- fechaEmision
 - institucionMedica
 - riesgoPuntaje, riesgoNivel
 - estadoFinal (validado | rechazado)
+- notasMedicas
+- grupoPatologia
+- cie10
+- certificadoDigital
+  - nombre
+  - tamano
+  - tipoContenido
+  - rutaStorage
+- planAcciones[]
+- planSeguimientos[]
+- planRecomendaciones[]
 - aprobadoPor, aprobadoEn
 - creadoEn
 
@@ -69,11 +99,20 @@
 - sector
 - puesto
 - tipo, diagnostico, fechaInicio, fechaFin
+- ausenciaDias
+- ausenciaLabel
+- periodoLabel
+- requiereCertificado (bool)
+- guardadoEn
+- guardadoPor
 - camposParciales (object)
 - actualizadoEn
 
 6) `planes_preventivos/{employeeId}`
 - employeeId
+- nombreCompleto
+- sector
+- puesto
 - acciones[]
 - seguimientos[]
 - recomendaciones[]
@@ -93,6 +132,7 @@
 - factorRecurrencia (number)
 
 9) `usuarios/{uid}`
+- uid
 - email
 - nombreVisible
 - rol
