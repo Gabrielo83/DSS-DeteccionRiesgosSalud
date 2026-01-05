@@ -2,232 +2,232 @@
 
 ## Colecciones y documentos
 
-1) `employees/{employeeId}`
+1) `empleados/{employeeId}`
 - employeeId (string)
-- fullName
+- nombreCompleto
 - sector
-- position
-- medicalRecordId
-- active (bool)
-- startDate (timestamp)
-- endDate (timestamp | null)
+- puesto
+- legajoMedico
+- activo (bool)
+- fechaAlta (timestamp)
+- fechaBaja (timestamp | null)
 
-2) `absences/{absenceId}`
+2) `ausencias/{absenceId}`
 - absenceId (string)
 - employeeId
-- fullName
+- nombreCompleto
 - sector
-- position
-- type (accidente/enfermedad/...)
-- diagnosis
-- startDate (timestamp)
-- endDate (timestamp)
-- days (number)
-- medicalInstitution
-- certificateFile
-  - name
-  - size
-  - contentType
-  - storagePath
-- status (draft | submitted)
-- createdAt, updatedAt
-- createdBy (userId/email)
+- puesto
+- tipo (accidente/enfermedad/...)
+- diagnostico
+- fechaInicio (timestamp)
+- fechaFin (timestamp)
+- dias (number)
+- institucionMedica
+- certificadoDigital
+  - nombre
+  - tamano
+  - tipoContenido
+  - rutaStorage
+- estado (borrador | enviado)
+- creadoEn, actualizadoEn
+- creadoPor (userId/email)
 
-3) `medical_validations/{reference}`
+3) `validaciones_medicas/{reference}`
 - reference (CM-..., docId)
-- employeeId, fullName
+- employeeId, nombreCompleto
 - sector
-- position
-- type, diagnosis
-- startDate, endDate, days
-- medicalInstitution
-- priority (Alta/Media/Baja)
-- status (pendiente | en_revision | validado | rechazado)
-- riskScore (number)
-- riskLevel (alta/media/baja)
-- medicalNotes
-- reviewedBy, reviewedAt
-- createdAt, updatedAt
+- puesto
+- tipo, diagnostico
+- fechaInicio, fechaFin, dias
+- institucionMedica
+- prioridad (Alta/Media/Baja)
+- estado (pendiente | en_revision | validado | rechazado)
+- riesgoPuntaje (number)
+- riesgoNivel (alta/media/baja)
+- notasMedicas
+- revisadoPor, revisadoEn
+- creadoEn, actualizadoEn
 
-4) `medical_history/{historyId}`
+4) `historial_medico/{historyId}`
 - historyId (string, usar reference)
 - reference
-- employeeId, fullName
+- employeeId, nombreCompleto
 - sector
-- position
-- type, diagnosis
-- startDate, endDate, days
-- medicalInstitution
-- riskScore, riskLevel
-- finalStatus (validado | rechazado)
-- approvedBy, approvedAt
-- createdAt
+- puesto
+- tipo, diagnostico
+- fechaInicio, fechaFin, dias
+- institucionMedica
+- riesgoPuntaje, riesgoNivel
+- estadoFinal (validado | rechazado)
+- aprobadoPor, aprobadoEn
+- creadoEn
 
-5) `drafts/{draftId}`
+5) `borradores/{draftId}`
 - draftId
-- employeeId, fullName
+- employeeId, nombreCompleto
 - sector
-- position
-- type, diagnosis, startDate, endDate
-- partialFields (object)
-- updatedAt
+- puesto
+- tipo, diagnostico, fechaInicio, fechaFin
+- camposParciales (object)
+- actualizadoEn
 
-6) `preventive_plans/{employeeId}`
+6) `planes_preventivos/{employeeId}`
 - employeeId
-- actions[]
-- followUps[]
-- recommendations[]
-- updatedAt, updatedBy
+- acciones[]
+- seguimientos[]
+- recomendaciones[]
+- actualizadoEn, actualizadoPor
 
-7) `pathologies/{pathologyId}`
+7) `patologias/{pathologyId}`
 - pathologyId
-- name
-- cie10Code
-- group
-- baseRisk (number)
+- nombre
+- cie10
+- grupo
+- riesgoBase (number)
 
-8) `risk_parameters/{configId}`
+8) `parametros_riesgo/{configId}`
 - configId
-- highRiskThreshold (number)
-- reviewPeriodMonths (number)
-- recurrenceFactor (number)
+- umbralAltoRiesgo (number)
+- periodoEvaluacionMeses (number)
+- factorRecurrencia (number)
 
-9) `users/{uid}`
+9) `usuarios/{uid}`
 - email
-- displayName
-- role
+- nombreVisible
+- rol
 
 Notas
-- Usar reference como docId en medical_validations y medical_history para evitar duplicados.
-- Storage sugerido: certificates/{reference}/{filename}
+- Usar reference como docId en validaciones_medicas y historial_medico para evitar duplicados.
+- Storage sugerido: certificados/{reference}/{filename}
 
 ## Diagrama (Mermaid)
 
 ```mermaid
 erDiagram
-  USERS {
+  USUARIOS {
     string uid
     string email
-    string displayName
-    string role
+    string nombreVisible
+    string rol
   }
 
-  EMPLOYEES {
+  EMPLEADOS {
     string employeeId
-    string fullName
+    string nombreCompleto
     string sector
-    string position
-    string medicalRecordId
-    boolean active
-    timestamp startDate
-    timestamp endDate
+    string puesto
+    string legajoMedico
+    boolean activo
+    timestamp fechaAlta
+    timestamp fechaBaja
   }
 
-  ABSENCES {
+  AUSENCIAS {
     string absenceId
     string employeeId
-    string fullName
+    string nombreCompleto
     string sector
-    string position
-    string type
-    string diagnosis
-    timestamp startDate
-    timestamp endDate
-    number days
-    string medicalInstitution
-    string status
-    timestamp createdAt
-    timestamp updatedAt
-    string createdBy
+    string puesto
+    string tipo
+    string diagnostico
+    timestamp fechaInicio
+    timestamp fechaFin
+    number dias
+    string institucionMedica
+    string estado
+    timestamp creadoEn
+    timestamp actualizadoEn
+    string creadoPor
   }
 
-  MEDICAL_VALIDATIONS {
+  VALIDACIONES_MEDICAS {
     string reference
     string employeeId
-    string fullName
+    string nombreCompleto
     string sector
-    string position
-    string type
-    string diagnosis
-    timestamp startDate
-    timestamp endDate
-    number days
-    string medicalInstitution
-    string priority
-    string status
-    number riskScore
-    string riskLevel
-    string medicalNotes
-    string reviewedBy
-    timestamp reviewedAt
-    timestamp createdAt
-    timestamp updatedAt
+    string puesto
+    string tipo
+    string diagnostico
+    timestamp fechaInicio
+    timestamp fechaFin
+    number dias
+    string institucionMedica
+    string prioridad
+    string estado
+    number riesgoPuntaje
+    string riesgoNivel
+    string notasMedicas
+    string revisadoPor
+    timestamp revisadoEn
+    timestamp creadoEn
+    timestamp actualizadoEn
   }
 
-  MEDICAL_HISTORY {
+  HISTORIAL_MEDICO {
     string historyId
     string reference
     string employeeId
-    string fullName
+    string nombreCompleto
     string sector
-    string position
-    string type
-    string diagnosis
-    timestamp startDate
-    timestamp endDate
-    number days
-    string medicalInstitution
-    number riskScore
-    string riskLevel
-    string finalStatus
-    string approvedBy
-    timestamp approvedAt
-    timestamp createdAt
+    string puesto
+    string tipo
+    string diagnostico
+    timestamp fechaInicio
+    timestamp fechaFin
+    number dias
+    string institucionMedica
+    number riesgoPuntaje
+    string riesgoNivel
+    string estadoFinal
+    string aprobadoPor
+    timestamp aprobadoEn
+    timestamp creadoEn
   }
 
-  DRAFTS {
+  BORRADORES {
     string draftId
     string employeeId
-    string fullName
+    string nombreCompleto
     string sector
-    string position
-    string type
-    string diagnosis
-    timestamp startDate
-    timestamp endDate
-    object partialFields
-    timestamp updatedAt
+    string puesto
+    string tipo
+    string diagnostico
+    timestamp fechaInicio
+    timestamp fechaFin
+    object camposParciales
+    timestamp actualizadoEn
   }
 
-  PREVENTIVE_PLANS {
+  PLANES_PREVENTIVOS {
     string employeeId
-    string actions
-    string followUps
-    string recommendations
-    timestamp updatedAt
-    string updatedBy
+    string acciones
+    string seguimientos
+    string recomendaciones
+    timestamp actualizadoEn
+    string actualizadoPor
   }
 
-  PATHOLOGIES {
+  PATOLOGIAS {
     string pathologyId
-    string name
-    string cie10Code
-    string group
-    number baseRisk
+    string nombre
+    string cie10
+    string grupo
+    number riesgoBase
   }
 
-  RISK_PARAMETERS {
+  PARAMETROS_RIESGO {
     string configId
-    number highRiskThreshold
-    number reviewPeriodMonths
-    number recurrenceFactor
+    number umbralAltoRiesgo
+    number periodoEvaluacionMeses
+    number factorRecurrencia
   }
 
-  EMPLOYEES ||--o{ ABSENCES : has
-  EMPLOYEES ||--o{ MEDICAL_VALIDATIONS : queues
-  EMPLOYEES ||--o{ MEDICAL_HISTORY : history
-  EMPLOYEES ||--o{ DRAFTS : drafts
-  EMPLOYEES ||--|| PREVENTIVE_PLANS : plan
-  USERS ||--o{ ABSENCES : creates
-  USERS ||--o{ MEDICAL_VALIDATIONS : reviews
+  EMPLEADOS ||--o{ AUSENCIAS : tiene
+  EMPLEADOS ||--o{ VALIDACIONES_MEDICAS : encola
+  EMPLEADOS ||--o{ HISTORIAL_MEDICO : historial
+  EMPLEADOS ||--o{ BORRADORES : borradores
+  EMPLEADOS ||--|| PLANES_PREVENTIVOS : plan
+  USUARIOS ||--o{ AUSENCIAS : crea
+  USUARIOS ||--o{ VALIDACIONES_MEDICAS : revisa
 ```
