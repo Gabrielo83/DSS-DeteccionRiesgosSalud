@@ -12,7 +12,9 @@ dist
 dist-ssr
 temp.txt
 HISTORIAL.md
+RELEASE.md
 *.local
+
 
 # Editor directories and files
 .vscode/*
