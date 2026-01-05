@@ -18,6 +18,12 @@ jobs:
           node-version: "20"
           cache: "npm"
       - name: Install
-        run: npm ci
+        run: |
+          ls -la
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
       - name: Test
         run: npm test
