@@ -2,11 +2,16 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 import { MOCK_USERS } from "../data/mockUsers.js";
+import { signInWithEmail } from "../utils/firebaseAuth.js";
 
 function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
   const navigate = useNavigate();
   const [formValues, setFormValues] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const isFirebaseEnabled = Boolean(
+    import.meta.env.VITE_FIREBASE_PROJECT_ID &&
+      import.meta.env.VITE_FIREBASE_API_KEY,
+  );
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -45,10 +50,25 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
       return;
     }
 
+    if (isFirebaseEnabled) {
+      signInWithEmail(email, password)
+        .then(() => {
+          setError("");
+        })
+        .catch((authError) => {
+          const message =
+            authError?.code === "auth/invalid-credential"
+              ? "Credenciales invalidas."
+              : "No se pudo iniciar sesion. Verifica tus datos.";
+          setError(message);
+        });
+      return;
+    }
+
     const matchedUser = MOCK_USERS.find(
       (user) =>
         user.email.toLowerCase() === email.toLowerCase() &&
-        user.password === password
+        user.password === password,
     );
 
     if (!matchedUser) {
