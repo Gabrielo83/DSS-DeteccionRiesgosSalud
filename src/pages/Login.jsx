@@ -250,7 +250,7 @@ function Login({
               ) : null}
               {!isAuthReady ? (
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-300">
-                  Conectando con Firebase...
+                  Conectando...
                 </p>
               ) : null}
               {roleMissing ? (
