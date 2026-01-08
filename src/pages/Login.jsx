@@ -8,6 +8,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
   const navigate = useNavigate();
   const [formValues, setFormValues] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const isFirebaseEnabled = Boolean(
     import.meta.env.VITE_FIREBASE_PROJECT_ID &&
       import.meta.env.VITE_FIREBASE_API_KEY,
@@ -26,6 +27,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const email = formValues.email.trim();
     const password = formValues.password.trim();
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,6 +53,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
     }
 
     if (isFirebaseEnabled) {
+      setIsSubmitting(true);
       signInWithEmail(email, password)
         .then(() => {
           setError("");
@@ -61,6 +64,9 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
               ? "Credenciales invalidas."
               : "No se pudo iniciar sesion. Verifica tus datos.";
           setError(message);
+        })
+        .finally(() => {
+          setIsSubmitting(false);
         });
       return;
     }
@@ -79,6 +85,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
     }
 
     setError("");
+    setIsSubmitting(true);
     if (typeof onLoginSuccess === "function") {
       onLoginSuccess(matchedUser);
     }
@@ -217,9 +224,17 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="w-full rounded-2xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-400/40 transition hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:shadow-slate-900/40 dark:hover:bg-white"
               >
-                Ingresar al Sistema
+                {isSubmitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white dark:border-slate-900/40 dark:border-t-slate-900" />
+                    Ingresando...
+                  </span>
+                ) : (
+                  "Ingresar al Sistema"
+                )}
               </button>
 
               {error ? (
