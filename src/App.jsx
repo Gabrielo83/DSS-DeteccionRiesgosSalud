@@ -46,6 +46,7 @@ function App() {
   const [userRole, setUserRole] = useState(initialUser?.role ?? null)
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(initialUser))
   const [isAuthReady, setIsAuthReady] = useState(!isFirebaseEnabled)
+  const [roleMissing, setRoleMissing] = useState(false)
 
   useEffect(() => {
     const root = document.documentElement
@@ -93,6 +94,7 @@ function App() {
       setUserRole(user?.role ?? null)
       setIsAuthenticated(Boolean(user))
       setIsAuthReady(true)
+      setRoleMissing(Boolean(user) && !user?.role)
     })
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe()
@@ -115,11 +117,12 @@ function App() {
 
   const ProtectedRoute = ({ children, allowedRoles }) => {
     if (!isAuthReady) {
-      return null
+      return <Navigate to="/" replace />
     }
     if (!isAuthenticated) {
       return <Navigate to="/" replace />
     }
+    if (!userRole) return <Navigate to="/" replace />
     if (allowedRoles && !allowedRoles.includes(userRole)) {
       return <Navigate to="/dashboard" replace />
     }
@@ -151,6 +154,9 @@ function App() {
               onToggleTheme={toggleTheme}
               onLoginSuccess={handleLoginSuccess}
               isAuthenticated={isAuthenticated}
+              isAuthReady={isAuthReady}
+              userRole={userRole}
+              roleMissing={roleMissing}
             />
           }
         />
