@@ -9,6 +9,7 @@ import MedicalRecords from './pages/MedicalRecords.jsx'
 import AuthContext from './context/AuthContext.jsx'
 import { MOCK_USERS } from './data/mockUsers.js'
 import { startQueueSync } from './utils/operationQueue.js'
+import { onAuthChange, signOutUser } from './utils/firebaseAuth.js'
 
 const ROLE_PERMISSIONS = {
   superAdmin: ['dashboard', 'registro', 'certificados', 'validacion', 'legajos'],
@@ -27,8 +28,12 @@ const ROUTE_ACCESS = {
 }
 
 function App() {
+  const isFirebaseEnabled = Boolean(
+    import.meta.env.VITE_FIREBASE_PROJECT_ID &&
+      import.meta.env.VITE_FIREBASE_API_KEY,
+  )
   const initialUser =
-    typeof window !== 'undefined'
+    !isFirebaseEnabled && typeof window !== 'undefined'
       ? (() => {
           const email = window.localStorage.getItem('sessionEmail')
           if (!email) return null
@@ -40,6 +45,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(initialUser)
   const [userRole, setUserRole] = useState(initialUser?.role ?? null)
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(initialUser))
+  const [isAuthReady, setIsAuthReady] = useState(!isFirebaseEnabled)
 
   useEffect(() => {
     const root = document.documentElement
@@ -63,6 +69,7 @@ function App() {
   const toggleTheme = () => setIsDark((value) => !value)
 
   const handleLoginSuccess = (user) => {
+    if (isFirebaseEnabled) return
     setCurrentUser(user)
     setUserRole(user.role)
     setIsAuthenticated(true)
@@ -79,7 +86,24 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isFirebaseEnabled) return undefined
+    const unsubscribe = onAuthChange((user) => {
+      setCurrentUser(user)
+      setUserRole(user?.role ?? null)
+      setIsAuthenticated(Boolean(user))
+      setIsAuthReady(true)
+    })
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe()
+    }
+  }, [isFirebaseEnabled])
+
   const handleLogout = () => {
+    if (isFirebaseEnabled) {
+      signOutUser()
+      return
+    }
     setCurrentUser(null)
     setUserRole(null)
     setIsAuthenticated(false)
@@ -90,6 +114,9 @@ function App() {
   }
 
   const ProtectedRoute = ({ children, allowedRoles }) => {
+    if (!isAuthReady) {
+      return null
+    }
     if (!isAuthenticated) {
       return <Navigate to="/" replace />
     }
