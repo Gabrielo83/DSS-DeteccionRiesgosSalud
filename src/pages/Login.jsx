@@ -4,7 +4,15 @@ import ThemeToggle from "../components/ThemeToggle.jsx";
 import { MOCK_USERS } from "../data/mockUsers.js";
 import { signInWithEmail } from "../utils/firebaseAuth.js";
 
-function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
+function Login({
+  isDark,
+  onToggleTheme,
+  onLoginSuccess,
+  isAuthenticated,
+  isAuthReady,
+  userRole,
+  roleMissing,
+}) {
   const navigate = useNavigate();
   const [formValues, setFormValues] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -15,10 +23,10 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
   );
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && userRole) {
       navigate("/dashboard", { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, userRole]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -239,6 +247,16 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
 
               {error ? (
                 <p className="text-xs font-medium text-rose-500">{error}</p>
+              ) : null}
+              {!isAuthReady ? (
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-300">
+                  Conectando con Firebase...
+                </p>
+              ) : null}
+              {roleMissing ? (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-300">
+                  No se encontro el rol del usuario en Firestore.
+                </p>
               ) : null}
             </form>
 
