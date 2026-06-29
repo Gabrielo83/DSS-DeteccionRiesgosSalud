@@ -3,6 +3,7 @@ import {
   OPERATION_QUEUE_UPDATED_EVENT,
 } from "./storageKeys.js";
 import { readEntity, saveEntity } from "./indexedDbClient.js";
+import { syncOperation } from "../services/syncHandler.js";
 
 const IDB_STORE = "queue";
 const IDB_KEY = "queue";
@@ -99,7 +100,10 @@ export const removeOperation = (id) => {
   persistQueue(filtered);
 };
 
-const defaultHandler = async () => {
+const defaultHandler = async (operation) => {
+  if (operation) {
+    return syncOperation(operation);
+  }
   // Simula sync remoto; en producción reemplazar por llamadas HTTP/Firebase.
   const isOffline = hasNavigator() && navigator.onLine === false;
   if (isOffline) {

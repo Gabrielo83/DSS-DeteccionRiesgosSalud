@@ -18,6 +18,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - React Router
 - Context API para autenticacion y permisos por rol
 - IndexedDB/localStorage para persistencia del prototipo
+- Firebase Web SDK para sincronizacion progresiva mediante Firestore/Auth/Storage
 - Vitest + Testing Library para pruebas unitarias e integrales
 
 ## Alcance de roles
@@ -44,6 +45,37 @@ npm run dev -- --host
 ```
 
 4. Abrir [http://localhost:5173](http://localhost:5173).
+
+## Modos de datos
+
+El proyecto mantiene un unico codigo base con selector de proveedor:
+
+- `local`: usa `localStorage`, IndexedDB y cola local. Es el modo estable para defensa.
+- `firebase`: mantiene la continuidad local y sincroniza operaciones con Firestore.
+
+Para modo local:
+
+```bash
+npm run dev -- --host
+```
+
+Para modo Firebase:
+
+1. Copiar `.env.example` a `.env.firebase`.
+2. Completar las variables `VITE_FIREBASE_*` del proyecto Firebase.
+3. Configurar:
+
+```env
+VITE_DATA_PROVIDER="firebase"
+```
+
+4. Ejecutar:
+
+```bash
+npm run dev:firebase -- --host
+```
+
+Las credenciales reales no deben subirse al repositorio.
 
 ## Scripts utiles
 
@@ -73,7 +105,7 @@ npm run build
 
 - superadmin@empresa.com / Super123*
 - medico@empresa.com / Medico123*
-- administrativo@empresa.com / Administra123*
+- administrativo@empresa.com / Admin123*
 - gerente@empresa.com / Gerente123*
 - rrhh@empresa.com / Rrhh123*
 

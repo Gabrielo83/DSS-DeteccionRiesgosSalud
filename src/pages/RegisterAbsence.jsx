@@ -840,7 +840,12 @@ const clearCertificateFile = () => {
       },
     });
     setValidationQueue(readValidationQueue());
-    return { reference, submissionTimestamp, wasRevision: Boolean(activeRevisionEntry) };
+    return {
+      reference,
+      submissionTimestamp,
+      wasRevision: Boolean(activeRevisionEntry),
+      entry,
+    };
   };
 
   const handleSubmit = (action) => {
@@ -925,6 +930,7 @@ const clearCertificateFile = () => {
           detailedReason: formValues.detailedReason,
           submittedAt: result.submissionTimestamp,
           wasRevision: isRevisionFlow,
+          certificate: result.entry,
         },
         {
           user: auth?.user?.email || currentUserName,
