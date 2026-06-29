@@ -10,6 +10,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - Legajos medicos digitales con busqueda, certificados por periodo, carga masiva de historicos y vista previa de documentos.
 - Dashboard operativo con metricas de ausentismo, alertas activas, mapa de calor por sector, tabla de riesgo individual y planes preventivos.
 - Persistencia en navegador con IndexedDB/localStorage y cola de operaciones para continuidad operativa.
+- Sincronizacion progresiva con Firebase mediante selector de proveedor.
 - Politica de contrasena segura, expiracion de sesion por inactividad y auditoria local de eventos criticos.
 
 ## Stack
@@ -18,7 +19,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - React Router
 - Context API para autenticacion y permisos por rol
 - IndexedDB/localStorage para persistencia del prototipo
-- Firebase Web SDK para sincronizacion progresiva mediante Firestore/Auth/Storage
+- Firebase Web SDK para Firestore, Authentication y Storage
 - Vitest + Testing Library para pruebas unitarias e integrales
 
 ## Alcance de roles
@@ -80,8 +81,11 @@ Las credenciales reales no deben subirse al repositorio.
 ## Scripts utiles
 
 ```bash
-# levantar en desarrollo
+# levantar en desarrollo local
 npm run dev -- --host
+
+# levantar en desarrollo Firebase
+npm run dev:firebase -- --host
 
 # ejecutar pruebas
 npm test
@@ -89,8 +93,11 @@ npm test
 # verificar calidad de codigo
 npm run lint
 
-# generar build de produccion
+# generar build de produccion local
 npm run build
+
+# generar build con modo Firebase
+npm run build:firebase
 ```
 
 ## Flujo de presentacion
@@ -122,3 +129,14 @@ npm run build
 ### Legajo Medico
 
 ![Legajo Medico](./src/assets/gifs/legajo-medico.gif)
+
+## Proximos pasos
+
+- Completar autenticacion Firebase con roles reales por usuario.
+- Persistir certificados, legajos, borradores, auditoria y planes en Firestore.
+- Subir adjuntos clinicos a Firebase Storage.
+- Mantener IndexedDB como respaldo offline-first.
+- Mover reglas sensibles y alertas criticas a Cloud Functions.
+
+Si necesitas regenerar datos controlados para presentacion, ejecuta
+`window.runDemoSeed()` en la consola del navegador.
