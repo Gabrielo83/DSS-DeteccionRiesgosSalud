@@ -1,13 +1,15 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle.jsx";
 import AuthContext from "../context/AuthContext.jsx";
 import { readValidationQueue } from "../utils/validationStorage.js";
 import {
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
   ABSENCE_DRAFTS_UPDATED_EVENT,
+  AUDIT_LOG_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { readDrafts } from "../utils/draftStorage.js";
+import { readAuditLog } from "../utils/auditLog.js";
 
 const navLinks = [
   {
@@ -37,13 +39,114 @@ const navLinks = [
 ];
 
 const BASE_PENDING_VALIDATIONS = 0;
+const ACKNOWLEDGED_NOTIFICATIONS_KEY = "app_acknowledged_notifications";
+const MAX_ACKNOWLEDGED_NOTIFICATIONS = 200;
 
-const getPendingValidationsCount = () => {
-  if (typeof window === "undefined") return 0;
-  const queue = readValidationQueue();
-  return queue.filter(
-    (item) => (item.status || "").toLowerCase() === "pendiente",
-  ).length;
+const notificationToneMap = {
+  rose:
+    "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100",
+  amber:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100",
+  sky:
+    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-100",
+  slate:
+    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200",
+};
+
+const formatNotificationTime = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const readAcknowledgedNotifications = () => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ACKNOWLEDGED_NOTIFICATIONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("No se pudieron leer las notificaciones atendidas:", error);
+    return [];
+  }
+};
+
+const saveAcknowledgedNotifications = (items) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    ACKNOWLEDGED_NOTIFICATIONS_KEY,
+    JSON.stringify(items.slice(0, MAX_ACKNOWLEDGED_NOTIFICATIONS)),
+  );
+};
+
+const buildCertificateDecisionNotification = (event, fallbackHref) => {
+  const status = String(event.metadata?.status || "").toLowerCase();
+  const reference = event.entityId || event.metadata?.reference || "certificado";
+  const ackKey = `audit:${event.id}`;
+  if (status.includes("rechaz")) {
+    return {
+      id: event.id,
+      ackKey,
+      tone: "rose",
+      title: "Certificado rechazado",
+      description: `El certificado ${reference} requiere correccion o seguimiento.`,
+      meta: formatNotificationTime(event.timestamp),
+      href: fallbackHref,
+    };
+  }
+  if (status.includes("revision")) {
+    return {
+      id: event.id,
+      ackKey,
+      tone: "amber",
+      title: "Certificado en revision",
+      description: `El certificado ${reference} quedo pendiente de evaluacion.`,
+      meta: formatNotificationTime(event.timestamp),
+      href: fallbackHref,
+    };
+  }
+  return {
+    id: event.id,
+    ackKey,
+    tone: "slate",
+    title: "Certificado validado",
+    description: `Medicina Laboral reviso el certificado ${reference}.`,
+    meta: formatNotificationTime(event.timestamp),
+    href: fallbackHref,
+  };
+};
+
+const buildSecurityAuditNotification = (event, fallbackHref) => {
+  const ackKey = `audit:${event.id}`;
+  if (event.eventType === "route_denied") {
+    return {
+      id: event.id,
+      ackKey,
+      tone: "rose",
+      title: "Acceso restringido detectado",
+      description: "Se registro un intento de acceso fuera de permisos.",
+      meta: formatNotificationTime(event.timestamp),
+      href: fallbackHref,
+    };
+  }
+  if (event.eventType === "session_expired") {
+    return {
+      id: event.id,
+      ackKey,
+      tone: "amber",
+      title: "Sesion expirada por inactividad",
+      description: "Una sesion fue cerrada automaticamente por seguridad.",
+      meta: formatNotificationTime(event.timestamp),
+      href: fallbackHref,
+    };
+  }
+  return null;
 };
 
 const roleDisplayMap = {
@@ -197,13 +300,25 @@ function CloseIcon() {
 
 function AppHeader({ active, isDark, onToggleTheme }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef(null);
   const navigate = useNavigate();
   const auth = useContext(AuthContext);
-  const [pendingExtras, setPendingExtras] = useState(getPendingValidationsCount);
-  const [absenceDraftsCount, setAbsenceDraftsCount] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    return readDrafts().length;
+  const [validationQueue, setValidationQueue] = useState(() => {
+    if (typeof window === "undefined") return [];
+    return readValidationQueue();
   });
+  const [absenceDrafts, setAbsenceDrafts] = useState(() => {
+    if (typeof window === "undefined") return [];
+    return readDrafts();
+  });
+  const [auditEvents, setAuditEvents] = useState(() => {
+    if (typeof window === "undefined") return [];
+    return readAuditLog();
+  });
+  const [acknowledgedNotifications, setAcknowledgedNotifications] = useState(
+    () => readAcknowledgedNotifications(),
+  );
   const allowedKeys =
     auth?.allowedRoutes && auth.allowedRoutes.length > 0
       ? auth.allowedRoutes
@@ -227,21 +342,124 @@ function AppHeader({ active, isDark, onToggleTheme }) {
       .slice(0, 2)
       .toUpperCase();
   }, [userName]);
+  const pendingExtras = useMemo(
+    () =>
+      validationQueue.filter(
+        (item) => (item.status || "").toLowerCase() === "pendiente",
+      ).length,
+    [validationQueue],
+  );
   const validationBadge = BASE_PENDING_VALIDATIONS + pendingExtras;
-  const draftsBadge = absenceDraftsCount;
+  const draftsBadge = absenceDrafts.length;
+
+  const notifications = useMemo(() => {
+    const items = [];
+    const acknowledgedSet = new Set(acknowledgedNotifications);
+    const isSuperAdmin = auth?.role === "superAdmin";
+    const canValidate = allowedKeys.includes("validacion");
+    const canRegister = allowedKeys.includes("registro");
+    const canDashboard = allowedKeys.includes("dashboard");
+    const certificateDecisionHref = allowedKeys.includes("legajos")
+      ? "/legajos-medicos"
+      : canDashboard
+        ? "/dashboard"
+        : filteredNavLinks[0]?.href || "/";
+    const securityHref = canDashboard
+      ? "/dashboard"
+      : filteredNavLinks[0]?.href || "/";
+    const validationWork = validationQueue.filter((item) => {
+      const status = (item.status || "").toLowerCase();
+      return status.includes("pendiente") || status.includes("revision");
+    });
+    const highPriority = validationWork.filter(
+      (item) => (item.priority || "").toLowerCase() === "alta",
+    );
+
+    if (canValidate && highPriority.length > 0) {
+      items.push({
+        id: "high-priority-validations",
+        tone: "rose",
+        title: "Certificados de prioridad alta",
+        description: `${highPriority.length} requieren revision medica prioritaria.`,
+        meta: "Motor de riesgo",
+        href: "/validacion-medica",
+      });
+    }
+
+    if (canValidate && validationWork.length > 0) {
+      items.push({
+        id: "pending-validations",
+        tone: "amber",
+        title: "Validaciones pendientes",
+        description: `${validationWork.length} certificados esperan decision medica.`,
+        meta: "Validacion Medica",
+        href: "/validacion-medica",
+      });
+    }
+
+    if (canRegister && absenceDrafts.length > 0) {
+      items.push({
+        id: "absence-drafts",
+        tone: "sky",
+        title: "Registros incompletos",
+        description: `${absenceDrafts.length} borradores de ausencia guardados.`,
+        meta: "Registro de Ausencia",
+        href: "/registro-ausencia",
+      });
+    }
+
+    auditEvents.slice(0, 8).forEach((event) => {
+      const ackKey = `audit:${event.id}`;
+      if (acknowledgedSet.has(ackKey)) return;
+      if (event.eventType === "certificate_decision") {
+        items.push(
+          buildCertificateDecisionNotification(event, certificateDecisionHref),
+        );
+        return;
+      }
+      if (
+        isSuperAdmin &&
+        (event.eventType === "route_denied" ||
+          event.eventType === "session_expired")
+      ) {
+        const notification = buildSecurityAuditNotification(
+          event,
+          securityHref,
+        );
+        if (notification) items.push(notification);
+      }
+    });
+
+    return items.slice(0, 5);
+  }, [
+    absenceDrafts,
+    acknowledgedNotifications,
+    auditEvents,
+    allowedKeys,
+    auth?.role,
+    filteredNavLinks,
+    validationQueue,
+  ]);
+
+  const notificationsBadge = notifications.length;
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const updateExtras = () => {
-      setPendingExtras(getPendingValidationsCount());
+      setValidationQueue(readValidationQueue());
     };
     const updateDrafts = () => {
-      setAbsenceDraftsCount(readDrafts().length);
+      setAbsenceDrafts(readDrafts());
+    };
+    const updateAuditEvents = () => {
+      setAuditEvents(readAuditLog());
     };
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, updateExtras);
     window.addEventListener(ABSENCE_DRAFTS_UPDATED_EVENT, updateDrafts);
+    window.addEventListener(AUDIT_LOG_UPDATED_EVENT, updateAuditEvents);
     window.addEventListener("storage", updateExtras);
     window.addEventListener("storage", updateDrafts);
+    window.addEventListener("storage", updateAuditEvents);
     return () => {
       window.removeEventListener(
         MEDICAL_VALIDATIONS_UPDATED_EVENT,
@@ -251,10 +469,52 @@ function AppHeader({ active, isDark, onToggleTheme }) {
         ABSENCE_DRAFTS_UPDATED_EVENT,
         updateDrafts
       );
+      window.removeEventListener(AUDIT_LOG_UPDATED_EVENT, updateAuditEvents);
       window.removeEventListener("storage", updateExtras);
       window.removeEventListener("storage", updateDrafts);
+      window.removeEventListener("storage", updateAuditEvents);
     };
   }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen || typeof window === "undefined") return undefined;
+    const handleOutsideClick = (event) => {
+      if (
+        notificationsRef.current &&
+        !notificationsRef.current.contains(event.target)
+      ) {
+        setNotificationsOpen(false);
+      }
+    };
+    const handleEsc = (event) => {
+      if (event.key === "Escape") setNotificationsOpen(false);
+    };
+    window.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleEsc);
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [notificationsOpen]);
+
+  const acknowledgeNotification = (ackKey) => {
+    if (!ackKey) return;
+    setAcknowledgedNotifications((current) => {
+      if (current.includes(ackKey)) return current;
+      const next = [ackKey, ...current].slice(
+        0,
+        MAX_ACKNOWLEDGED_NOTIFICATIONS,
+      );
+      saveAcknowledgedNotifications(next);
+      return next;
+    });
+  };
+
+  const handleNotificationClick = (notification) => {
+    acknowledgeNotification(notification.ackKey);
+    setNotificationsOpen(false);
+    if (notification.href) navigate(notification.href);
+  };
 
   const handleLogout = () => {
     if (typeof auth?.logout === "function") {
@@ -333,25 +593,96 @@ function AppHeader({ active, isDark, onToggleTheme }) {
         </nav>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600"
-            aria-label="Notificaciones"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-4 w-4"
+          <div className="relative" ref={notificationsRef}>
+            <button
+              type="button"
+              className="relative rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:focus:ring-slate-800"
+              aria-label="Notificaciones"
+              aria-expanded={notificationsOpen}
+              onClick={() => setNotificationsOpen((value) => !value)}
             >
-              <path d="M10 18a2 2 0 002-2H8a2 2 0 002 2z" />
-              <path
-                fillRule="evenodd"
-                d="M10 2a4 4 0 00-4 4c0 1.157-.312 2.202-.812 3.031C4.72 10.157 4.5 10.93 4.5 11.5v.35c0 .694-.391 1.33-1 1.65L3 13.75V15h14v-1.25l-.5-.25c-.609-.32-1-.956-1-1.65v-.35c0-.57-.22-1.343-.688-2.469-.5-.829-.812-1.874-.812-3.031a4 4 0 00-4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4"
+              >
+                <path d="M10 18a2 2 0 002-2H8a2 2 0 002 2z" />
+                <path
+                  fillRule="evenodd"
+                  d="M10 2a4 4 0 00-4 4c0 1.157-.312 2.202-.812 3.031C4.72 10.157 4.5 10.93 4.5 11.5v.35c0 .694-.391 1.33-1 1.65L3 13.75V15h14v-1.25l-.5-.25c-.609-.32-1-.956-1-1.65v-.35c0-.57-.22-1.343-.688-2.469-.5-.829-.812-1.874-.812-3.031a4 4 0 00-4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              {notificationsBadge > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white shadow-sm shadow-rose-500/40">
+                  {notificationsBadge > 9 ? "9+" : notificationsBadge}
+                </span>
+              ) : null}
+            </button>
+
+            {notificationsOpen ? (
+              <div className="absolute right-0 z-30 mt-3 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-300/40 dark:border-slate-800 dark:bg-slate-950 dark:shadow-black/40">
+                <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Notificaciones
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Pendientes operativos y eventos relevantes.
+                  </p>
+                </div>
+
+                <div className="max-h-[22rem] overflow-y-auto p-2">
+                  {notifications.length > 0 ? (
+                    <ul className="space-y-2">
+                      {notifications.map((notification) => (
+                        <li key={notification.id}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleNotificationClick(notification)
+                            }
+                            className="w-full rounded-xl border border-transparent p-3 text-left transition hover:border-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:hover:border-slate-800 dark:hover:bg-slate-900 dark:focus:ring-slate-800"
+                          >
+                            <div className="flex items-start gap-3">
+                              <span
+                                className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full border ${
+                                  notificationToneMap[notification.tone] ||
+                                  notificationToneMap.slate
+                                }`}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-semibold text-slate-900 dark:text-white">
+                                  {notification.title}
+                                </span>
+                                <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                                  {notification.description}
+                                </span>
+                                {notification.meta ? (
+                                  <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                                    {notification.meta}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="px-4 py-8 text-center">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Sin pendientes
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        No hay acciones operativas para atender ahora.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           <ThemeToggle
             isDark={isDark}

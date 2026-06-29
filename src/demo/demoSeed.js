@@ -11,7 +11,6 @@ import { saveEntity } from "../utils/indexedDbClient.js";
 
 const PLACEHOLDER_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAYAAAAGCAYAAADgzO9IAAAAFElEQVR42mP8//8/AwXgPxQDAwMADIYH/qAnbcIAAAAASUVORK5CYII=";
-const DEMO_CERTIFICATE_COUNT = 20;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const formatDateLabel = (date) =>
@@ -167,6 +166,109 @@ const createHistoryRecord = (
   employeeKey,
 });
 
+const normalizeSectorName = (value = "") =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const getEmployeesBySector = (sector, count = 1) => {
+  const target = normalizeSectorName(sector);
+  return mockEmployees
+    .filter((employee) => normalizeSectorName(employee.sector) === target)
+    .slice(0, count);
+};
+
+const buildRange = (baseDate, startOffsetDays, durationDays) => {
+  const startDate = new Date(baseDate.getTime() - startOffsetDays * DAY_IN_MS);
+  const endDate = new Date(
+    startDate.getTime() + Math.max(1, durationDays) * DAY_IN_MS,
+  );
+  return {
+    startDate: formatDateISO(startDate),
+    endDate: formatDateISO(endDate),
+    issued: formatDateISO(startDate),
+  };
+};
+
+const createControlledValidation = (employee, scenario, index, baseDate) => {
+  const range = buildRange(
+    baseDate,
+    scenario.startOffsetDays,
+    scenario.durationDays,
+  );
+  return createValidationEntry(employee, {
+    reference: scenario.reference || `CM-PEND-${String(index + 1).padStart(4, "0")}`,
+    priority: scenario.priority,
+    status: scenario.status,
+    absenceType: scenario.absenceType,
+    certificateType: scenario.certificateType,
+    detailedReason: scenario.detailedReason,
+    institution: scenario.institution,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    notes: scenario.notes,
+    submittedDate: new Date(baseDate.getTime() - index * 45 * 60 * 1000),
+  });
+};
+
+const createControlledHistoryRecord = (
+  employee,
+  scenario,
+  index,
+  baseDate,
+) => {
+  const range = buildRange(
+    baseDate,
+    scenario.startOffsetDays,
+    scenario.durationDays,
+  );
+  const riskDescriptor =
+    scenario.riskLevel === "Alta"
+      ? "Intervencion inmediata"
+      : scenario.riskLevel === "Media"
+        ? "Monitoreo continuo"
+        : "Seguimiento general";
+
+  return {
+    id: scenario.reference || `CM-VAL-${String(index + 1).padStart(4, "0")}`,
+    reference: scenario.reference || `CM-VAL-${String(index + 1).padStart(4, "0")}`,
+    title: scenario.certificateType,
+    employee: employee.fullName,
+    employeeId: employee.employeeId,
+    sector: employee.sector,
+    position: employee.position,
+    absenceType: scenario.absenceType,
+    certificateType: scenario.certificateType,
+    detailedReason: scenario.detailedReason,
+    pathologyCategory: scenario.pathologyCategory,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    issued: range.issued,
+    issueDate: range.issued,
+    days: scenario.durationDays + 1,
+    status: "Validado",
+    document: `${scenario.reference || `CM-VAL-${String(index + 1).padStart(4, "0")}`}.pdf`,
+    institution: scenario.institution,
+    notes: scenario.notes,
+    reviewer: "Dra. Laura Alvarez",
+    riskScore: scenario.riskScore,
+    riskScoreValue: scenario.riskScore,
+    riskLevel: scenario.riskLevel,
+    riskDescriptor,
+    planActions: scenario.planActions || [],
+    planFollowUps: scenario.planFollowUps || [],
+    planRecommendations: scenario.planRecommendations || [],
+  };
+};
+
+const appendHistoryCase = (historyPayload, employee, record) => {
+  if (!historyPayload[employee.employeeId]) {
+    historyPayload[employee.employeeId] = [];
+  }
+  historyPayload[employee.employeeId].push(record);
+};
+
 const IDB_TARGETS = {
   [MEDICAL_VALIDATIONS_STORAGE_KEY]: { store: "validations", key: "queue" },
   [MEDICAL_HISTORY_STORAGE_KEY]: { store: "history", key: "records" },
@@ -187,65 +289,243 @@ const persistWithEvent = (key, value, eventName) => {
 export const runDemoSeed = () => {
   if (typeof window === "undefined") return;
   const now = new Date();
-  const validationEntries = Array.from({ length: DEMO_CERTIFICATE_COUNT }).map(
-    (_, index) => {
-      const employee = mockEmployees[index % mockEmployees.length];
-      const scenario = scenarioTemplates[index % scenarioTemplates.length];
-      const submittedDate = new Date(now.getTime() - index * 90 * 60 * 1000);
-      const startDateObj = new Date(
-        submittedDate.getTime() - (scenario.durationDays + 1) * DAY_IN_MS,
-      );
-      const endDateObj = new Date(
-        startDateObj.getTime() + scenario.durationDays * DAY_IN_MS,
-      );
+  const [rrhh1, rrhh2] = getEmployeesBySector("Recursos Humanos", 2);
+  const [salud1] = getEmployeesBySector("Salud Ocupacional", 1);
+  const [admin1] = getEmployeesBySector("Administracion", 1);
+  const [produccion1, produccion2] = getEmployeesBySector("Produccion", 2);
+  const [seguridad1, seguridad2] = getEmployeesBySector(
+    "Seguridad Ocupacional",
+    2,
+  );
+  const safeProduccion1 = produccion1 || mockEmployees[0];
+  const safeProduccion2 = produccion2 || safeProduccion1;
 
-      return createValidationEntry(employee, {
-        reference: `CM-DEMO-${String(index + 1).padStart(4, "0")}`,
-        priority: scenario.priority,
-        status: scenario.status,
-        absenceType: scenario.absenceType,
-        certificateType: scenario.certificateType,
-        detailedReason: scenario.detailedReason,
-        institution: scenario.institution,
-        startDate: formatDateISO(startDateObj),
-        endDate: formatDateISO(endDateObj),
-        notes: scenario.notes,
-        submittedDate,
-      });
+  const validationScenarios = [
+    {
+      employee: rrhh1,
+      reference: "CM-PEND-RRHH-001",
+      priority: "Alta",
+      status: "Pendiente",
+      absenceType: "enfermedad",
+      certificateType: "Licencia por estres laboral",
+      detailedReason:
+        "Cuadro de estres laboral asociado a cierre mensual y sobrecarga administrativa.",
+      pathologyCategory: "salud-mental",
+      institution: "Clinica del Sur",
+      durationDays: 7,
+      startOffsetDays: 12,
+      notes:
+        "Pendiente de revision: requiere evaluacion profesional antes de definir acciones preventivas.",
     },
+    {
+      employee: rrhh2 || rrhh1,
+      reference: "CM-PEND-RRHH-002",
+      priority: "Alta",
+      status: "En Revision",
+      absenceType: "enfermedad",
+      certificateType: "Reposo respiratorio",
+      detailedReason:
+        "Cuadro respiratorio agudo en personal administrativo. Se solicita ampliar informe medico.",
+      pathologyCategory: "respiratoria",
+      institution: "Hospital Central",
+      durationDays: 5,
+      startOffsetDays: 9,
+      notes:
+        "En revision: falta constancia de tratamiento indicado por profesional externo.",
+    },
+    {
+      employee: seguridad1,
+      reference: "CM-PEND-SEG-001",
+      priority: "Media",
+      status: "Pendiente",
+      absenceType: "enfermedad",
+      certificateType: "Control preventivo",
+      detailedReason:
+        "Control medico preventivo posterior a recorrida de inspeccion.",
+      pathologyCategory: "otra",
+      institution: "Sanatorio Oeste",
+      durationDays: 1,
+      startOffsetDays: 6,
+      notes:
+        "Pendiente de validacion documental. No constituye patron productivo.",
+    },
+    {
+      employee: seguridad2 || seguridad1,
+      reference: "CM-PEND-SEG-002",
+      priority: "Media",
+      status: "Pendiente",
+      absenceType: "enfermedad",
+      certificateType: "Reposo respiratorio",
+      detailedReason: "Cuadro respiratorio agudo con indicacion de reposo.",
+      pathologyCategory: "respiratoria",
+      institution: "Centro Medico Norte",
+      durationDays: 3,
+      startOffsetDays: 5,
+      notes: "Pendiente de carga completa de antecedente clinico.",
+    },
+    {
+      employee: admin1 || rrhh1,
+      reference: "CM-PEND-ADM-001",
+      priority: "Baja",
+      status: "Pendiente",
+      absenceType: "enfermedad",
+      certificateType: "Control preventivo",
+      detailedReason: "Control medico programado sin patron recurrente.",
+      pathologyCategory: "otra",
+      institution: "Centro Cardiologico Norte",
+      durationDays: 1,
+      startOffsetDays: 3,
+      notes: "Sin observaciones adicionales.",
+    },
+  ].filter((scenario) => scenario.employee);
+
+  const validationEntries = validationScenarios.map((scenario, index) =>
+    createControlledValidation(scenario.employee, scenario, index, now),
   );
 
-  const historyPayload = mockEmployees.slice(0, 8).reduce((acc, employee, idx) => {
-    const issuedDate = new Date(now.getTime() - (idx + 5) * DAY_IN_MS);
-    acc[employee.employeeId] = [
-      createHistoryRecord(
-        employee.employeeId,
-        `CM-HIS-${String(idx + 101).padStart(4, "0")}`,
-        formatDateISO(issuedDate),
-        "Validado",
-        idx % 3 === 0 ? "Alta" : idx % 2 === 0 ? "Media" : "Baja",
-      ),
-    ];
-    return acc;
-  }, {});
+  const historyPayload = {};
+  const plansPayload = {};
+  const validatedScenarios = [
+    {
+      employee: safeProduccion1,
+      reference: "CM-VAL-PROD-001",
+      riskLevel: "Alta",
+      riskScore: 8.4,
+      absenceType: "enfermedad",
+      certificateType: "Lumbalgia ocupacional",
+      detailedReason:
+        "Lumbalgia cronica reagudizada asociada a tareas de carga y traslado de producto.",
+      pathologyCategory: "musculoesqueletica",
+      institution: "Sanatorio Central",
+      durationDays: 5,
+      startOffsetDays: 135,
+      notes:
+        "Primer antecedente de lumbalgia dentro de la ventana de seguimiento.",
+    },
+    {
+      employee: safeProduccion1,
+      reference: "CM-VAL-PROD-002",
+      riskLevel: "Alta",
+      riskScore: 8.6,
+      absenceType: "enfermedad",
+      certificateType: "Lumbalgia ocupacional",
+      detailedReason:
+        "Segundo episodio de lumbalgia con indicacion de kinesiologia. Vinculado a esfuerzo en linea de produccion.",
+      pathologyCategory: "musculoesqueletica",
+      institution: "Sanatorio Central",
+      durationDays: 6,
+      startOffsetDays: 78,
+      notes:
+        "Segundo antecedente asociado al mismo grupo diagnostico.",
+    },
+    {
+      employee: safeProduccion1,
+      reference: "CM-VAL-PROD-003",
+      riskLevel: "Alta",
+      riskScore: 8.9,
+      absenceType: "enfermedad",
+      certificateType: "Lumbalgia ocupacional",
+      detailedReason:
+        "Tercer episodio de lumbalgia en seis meses. Se activa plan preventivo para tareas de carga y traslado.",
+      pathologyCategory: "musculoesqueletica",
+      institution: "Sanatorio Central",
+      durationDays: 7,
+      startOffsetDays: 20,
+      notes:
+        "Tercer antecedente del mismo grupo diagnostico dentro de seis meses.",
+      planActions: [
+        "Evaluacion ergonomica del puesto - Medico laboral - 48 hs",
+        "Adecuacion temporal de tareas - RRHH - 72 hs",
+      ],
+      planFollowUps: [
+        "7 dias - Control clinico",
+        "15 dias - Reevaluacion de aptitud",
+      ],
+      planRecommendations: [
+        "Evitar tareas con flexion lumbar sostenida.",
+        "Registrar evolucion semanal hasta el alta preventiva.",
+      ],
+    },
+    {
+      employee: safeProduccion2,
+      reference: "CM-VAL-PROD-004",
+      riskLevel: "Media",
+      riskScore: 6.1,
+      absenceType: "enfermedad",
+      certificateType: "Tendinitis de hombro",
+      detailedReason:
+        "Tendinitis asociada a movimientos repetitivos en puesto de embalaje.",
+      pathologyCategory: "musculoesqueletica",
+      institution: "Hospital Central",
+      durationDays: 4,
+      startOffsetDays: 18,
+      notes:
+        "Caso validado de riesgo medio para seguimiento ergonomico sectorial.",
+    },
+    {
+      employee: admin1 || rrhh2 || rrhh1,
+      reference: "CM-VAL-ADM-001",
+      riskLevel: "Media",
+      riskScore: 5.3,
+      absenceType: "enfermedad",
+      certificateType: "Reposo respiratorio",
+      detailedReason:
+        "Cuadro respiratorio aislado en area administrativa.",
+      pathologyCategory: "respiratoria",
+      institution: "Hospital Central",
+      durationDays: 3,
+      startOffsetDays: 11,
+      notes:
+        "Caso validado de riesgo medio sin patron recurrente.",
+    },
+    {
+      employee: salud1,
+      reference: "CM-VAL-SALUD-001",
+      riskLevel: "Baja",
+      riskScore: 3.7,
+      absenceType: "enfermedad",
+      certificateType: "Control preventivo",
+      detailedReason:
+        "Control medico preventivo del equipo de salud ocupacional.",
+      pathologyCategory: "otra",
+      institution: "Centro Medico Norte",
+      durationDays: 1,
+      startOffsetDays: 16,
+      notes: "Validado como seguimiento general del personal del area.",
+    },
+    {
+      employee: seguridad1,
+      reference: "CM-VAL-SEG-001",
+      riskLevel: "Baja",
+      riskScore: 3.8,
+      absenceType: "enfermedad",
+      certificateType: "Control preventivo",
+      detailedReason:
+        "Control medico preventivo sin hallazgos de riesgo ocupacional.",
+      pathologyCategory: "otra",
+      institution: "Centro Medico Norte",
+      durationDays: 1,
+      startOffsetDays: 14,
+      notes: "Validado como seguimiento general.",
+    },
+  ].filter((scenario) => scenario.employee);
 
-  const plansPayload = mockEmployees.slice(0, 4).reduce((acc, employee, idx) => {
-    acc[employee.employeeId] = {
-      actions: [
-        "Adaptar puesto sin esfuerzos de torsion",
-        "Control clinico semanal",
-      ],
-      followUps: [
-        `15 Mar - Kinesiologia ${idx + 1}`,
-        `30 Mar - Clinica laboral ${idx + 1}`,
-      ],
-      recommendations: [
-        "Registrar sintomas en la app corporativa",
-        "Pausas activas cada 90 minutos",
-      ],
-    };
-    return acc;
-  }, {});
+  validatedScenarios.forEach((scenario, index) => {
+    const record = createControlledHistoryRecord(
+      scenario.employee,
+      scenario,
+      index,
+      now,
+    );
+    appendHistoryCase(historyPayload, scenario.employee, record);
+    if (record.planActions.length) {
+      plansPayload[scenario.employee.employeeId] = {
+        actions: record.planActions,
+        followUps: record.planFollowUps,
+        recommendations: record.planRecommendations,
+      };
+    }
+  });
 
   persistWithEvent(
     MEDICAL_VALIDATIONS_STORAGE_KEY,
@@ -417,7 +697,7 @@ export const runDashboardSeed = () => {
     globalIdx += 1;
   };
 
-  multiCertEmployees.forEach((emp, idx) => {
+  multiCertEmployees.forEach((emp) => {
     scenarioTemplates.forEach((scenario, sIdx) => pushEntry(emp, scenario, sIdx));
   });
 

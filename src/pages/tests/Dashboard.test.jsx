@@ -127,19 +127,35 @@ describe('Funcionalidad del Dashboard', () => {
   beforeEach(() => {
     localStorage.clear()
     document.documentElement.className = ''
+    mockHistory['EMP-1'] = [
+      {
+        id: 'CM-001',
+        employee: 'Ana Gomez',
+        employeeId: 'EMP-1',
+        sector: 'Produccion',
+        status: 'Validado',
+        riskScore: 6.5,
+        issued: '2025-11-05T00:00:00.000Z',
+        startDate: '2025-11-05',
+        endDate: '2025-11-10',
+        title: 'Certificado Medico - Enfermedad',
+        detailedReason: 'Lumbalgia',
+        pathologyCategory: 'musculoskeletal',
+      },
+    ]
+    mockQueue.splice(0, mockQueue.length, {
+      reference: 'CM-QUEUE-1',
+      employeeId: 'EMP-1',
+      employee: 'Ana Gomez',
+      sector: 'Produccion',
+      status: 'pendiente',
+      priority: 'alta',
+      riskScoreValue: 6.5,
+      submitted: '2025-11-06T00:00:00.000Z',
+      detailedReason: 'Lumbalgia',
+      pathologyCategory: 'musculoskeletal',
+    })
   })
-
-  const setPeriodoNoviembre2025 = async () => {
-    const user = userEvent.setup()
-    const selects = screen.getAllByRole('combobox')
-    // asume orden: Mes, Año
-    if (selects[0]) {
-      await user.selectOptions(selects[0], ['10']) // 0-based, 10 -> noviembre
-    }
-    if (selects[1]) {
-      await user.selectOptions(selects[1], ['2025'])
-    }
-  }
 
   it('muestra el header con la navegacion y badge solo en Validacion Medica', () => {
     renderDashboard()
@@ -227,6 +243,69 @@ describe('Funcionalidad del Dashboard', () => {
     ).toBeInTheDocument()
   })
 
+  it('muestra empleados con riesgo individual cuando hay recurrencia del mismo grupo diagnostico', () => {
+    mockQueue.splice(0, mockQueue.length)
+    mockHistory['EMP-1'] = [
+      {
+        id: 'CM-REC-001',
+        employee: 'Ana Gomez',
+        employeeId: 'EMP-1',
+        sector: 'Produccion',
+        status: 'Validado',
+        riskScore: 8.4,
+        issued: '2026-02-10T00:00:00.000Z',
+        startDate: '2026-02-10',
+        endDate: '2026-02-15',
+        title: 'Lumbalgia ocupacional',
+        detailedReason: 'Lumbalgia por tarea de carga',
+        pathologyCategory: 'musculoskeletal',
+      },
+      {
+        id: 'CM-REC-002',
+        employee: 'Ana Gomez',
+        employeeId: 'EMP-1',
+        sector: 'Produccion',
+        status: 'Validado',
+        riskScore: 8.6,
+        issued: '2026-04-12T00:00:00.000Z',
+        startDate: '2026-04-12',
+        endDate: '2026-04-18',
+        title: 'Lumbalgia ocupacional',
+        detailedReason: 'Segundo episodio de lumbalgia',
+        pathologyCategory: 'musculoskeletal',
+      },
+      {
+        id: 'CM-REC-003',
+        employee: 'Ana Gomez',
+        employeeId: 'EMP-1',
+        sector: 'Produccion',
+        status: 'Validado',
+        riskScore: 8.9,
+        issued: '2026-06-01T00:00:00.000Z',
+        startDate: '2026-06-01',
+        endDate: '2026-06-07',
+        title: 'Lumbalgia ocupacional',
+        detailedReason: 'Tercer episodio de lumbalgia',
+        pathologyCategory: 'musculoskeletal',
+      },
+    ]
+
+    renderDashboard()
+
+    const heading = screen.getByRole('heading', {
+      name: /Empleados con riesgo individual/i,
+    })
+    const riskSection = heading.closest('article')
+    expect(riskSection).not.toBeNull()
+    const scoped = within(riskSection || document.body)
+
+    expect(scoped.getByText(/Ana Gomez/i)).toBeInTheDocument()
+    expect(scoped.getByText(/Produccion/i)).toBeInTheDocument()
+    expect(scoped.getByText(/Musculoesqueleticas/i)).toBeInTheDocument()
+    expect(scoped.getByText(/8\.9 \/ 10/i)).toBeInTheDocument()
+    expect(scoped.queryByText(/Aun no hay empleados con riesgo individual/i)).toBeNull()
+  })
+
   it('abre y cierra el menu de navegacion movil', async () => {
     const user = userEvent.setup()
     renderDashboard()
@@ -246,10 +325,20 @@ describe('Funcionalidad del Dashboard', () => {
     renderDashboard('gerente')
 
     expect(screen.getByRole('link', { name: /Panel de Control/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Legajos Medicos/i })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Registro Ausencia/i })).toBeNull()
     expect(screen.queryByRole('link', { name: /Certificados Medicos/i })).toBeNull()
     expect(screen.queryByRole('link', { name: /Validacion Medica/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Legajos Medicos/i })).toBeNull()
+  })
+
+  it('limita la navegacion visible para responsable de RRHH segun alcance administrativo', () => {
+    renderDashboard('respRRHH')
+
+    expect(screen.getByRole('link', { name: /Panel de Control/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Registro Ausencia/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Certificados Medicos/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Validacion Medica/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Legajos Medicos/i })).toBeNull()
   })
 
   it('bloquea la ruta de validacion medica para un rol administrativo', async () => {

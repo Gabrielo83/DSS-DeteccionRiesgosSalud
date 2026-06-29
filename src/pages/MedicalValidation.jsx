@@ -22,6 +22,7 @@ import {
   enqueueOperation,
   processQueue as processOperationQueue,
 } from "../utils/operationQueue.js";
+import { appendAuditLog } from "../utils/auditLog.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import AuthContext from "../context/AuthContext.jsx";
 
@@ -53,7 +54,6 @@ const priorityOptions = [
   { value: "baja", label: "Baja" },
 ];
 
-const baseValidationTemplates = [];
 const baseValidations = [];
 
 const statusFlow = ["pendiente", "en revision", "validado"];
@@ -493,6 +493,11 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     const fallbackRisk = calculateRiskScore({
       absenceType: selectedCertificate.certificateType || selectedCertificate.absenceType,
       detailedReason: selectedCertificate.detailedReason,
+      pathologyCategory: selectedCertificate.pathologyCategory,
+      durationDays:
+        selectedCertificate.absenceDays ??
+        getDaysBetween(selectedCertificate.startDate, selectedCertificate.endDate) ??
+        0,
     });
     const riskDetails = manualRisk || fallbackRisk;
 
@@ -553,6 +558,15 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       employee: updatedEntry.employee || selectedCertificate.employee,
       sector: updatedEntry.sector || selectedCertificate.sector,
       issued: updatedEntry.issueDate || updatedEntry.startDate || timestamp,
+      submittedAt: updatedEntry.submitted || selectedCertificate.submitted || "",
+      presentedAt:
+        updatedEntry.receivedTimestamp ||
+        selectedCertificate.receivedTimestamp ||
+        updatedEntry.submitted ||
+        selectedCertificate.submitted ||
+        timestamp,
+      validatedAt: timestamp,
+      lastDecisionAt: timestamp,
       days:
         updatedEntry.absenceDays ??
         getDaysBetween(updatedEntry.startDate, updatedEntry.endDate) ??
@@ -581,6 +595,17 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       planRecommendations: updatedEntry.planRecommendations || [],
     };
     appendEmployeeHistory(employeeKey, historyRecord);
+    appendAuditLog("certificate_decision", {
+      user: auth?.user?.email || reviewerName,
+      role: auth?.role,
+      entityId: updatedEntry.reference,
+      metadata: {
+        employeeId: updatedEntry.employeeId,
+        status: actionConfig.status,
+        riskLevel: entryRisk.level,
+        riskScore: entryRisk.score,
+      },
+    });
     enqueueOperation(
       "validateCertificate",
       {
@@ -636,6 +661,9 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     const riskAssessment = calculateRiskScore({
       absenceType: row.certificateType || row.absenceType,
       detailedReason: row.detailedReason || row.notes,
+      pathologyCategory: row.pathologyCategory,
+      durationDays:
+        row.absenceDays ?? getDaysBetween(row.startDate, row.endDate) ?? 0,
     });
     const suggestedScore = existingScore ?? riskAssessment.score;
     setRiskScoreInput(suggestedScore);
@@ -1128,8 +1156,8 @@ function MedicalValidation({ isDark, onToggleTheme }) {
                       colSpan={6}
                       className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400"
                     >
-                      Aun no hay certificados en proceso. Carga una ausencia o ejecuta{" "}
-                      <code>window.runDemoSeed()</code> para ver datos de demostracion.
+                      Aun no hay certificados en proceso. Carga una ausencia para
+                      iniciar la validacion medica.
                     </td>
                   </tr>
                 )}

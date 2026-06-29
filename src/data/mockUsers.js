@@ -15,7 +15,7 @@ export const MOCK_USERS = [
   },
   {
     email: "administrativo@empresa.com",
-    password: "Administra123*",
+    password: "Admin123*",
     role: "administrativo",
     roleLabel: "Administrativo",
     fullName: "Roxana Benitez",

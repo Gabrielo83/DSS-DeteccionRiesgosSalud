@@ -51,7 +51,7 @@ const TEMPLATE_BY_LEVEL = {
 
 const splitSegments = (line = "") =>
   line
-    .split(/·|��/g)
+    .split(/\s*[·-]\s*/g)
     .map((segment) => segment.trim())
     .filter(Boolean);
 

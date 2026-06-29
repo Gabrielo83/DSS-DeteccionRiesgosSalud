@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Dashboard from './pages/Dashboard.jsx'
 import Login from './pages/Login.jsx'
 import RegisterAbsence from './pages/RegisterAbsence.jsx'
@@ -9,27 +9,53 @@ import MedicalRecords from './pages/MedicalRecords.jsx'
 import AuthContext from './context/AuthContext.jsx'
 import { MOCK_USERS } from './data/mockUsers.js'
 import { startQueueSync } from './utils/operationQueue.js'
+import { appendAuditLog } from './utils/auditLog.js'
+
+const SESSION_TIMEOUT_MS = 20 * 60 * 1000
+const SESSION_LAST_ACTIVITY_KEY = 'sessionLastActivityAt'
 
 const ROLE_PERMISSIONS = {
   superAdmin: ['dashboard', 'registro', 'certificados', 'validacion', 'legajos'],
   medico: ['dashboard', 'registro', 'certificados', 'validacion', 'legajos'],
-  administrativo: ['dashboard', 'registro', 'certificados', 'legajos'],
-  gerente: ['dashboard', 'legajos'],
-  respRRHH: ['dashboard', 'legajos'],
+  administrativo: ['dashboard', 'registro', 'certificados'],
+  gerente: ['dashboard'],
+  respRRHH: ['dashboard', 'registro'],
 }
 
 const ROUTE_ACCESS = {
   dashboard: ['superAdmin', 'medico', 'administrativo', 'gerente', 'respRRHH'],
-  registro: ['superAdmin', 'medico', 'administrativo'],
+  registro: ['superAdmin', 'medico', 'administrativo', 'respRRHH'],
   certificados: ['superAdmin', 'medico', 'administrativo'],
   validacion: ['superAdmin', 'medico'],
-  legajos: ['superAdmin', 'medico', 'administrativo', 'gerente', 'respRRHH'],
+  legajos: ['superAdmin', 'medico'],
+}
+
+const clearStoredSession = () => {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem('sessionRole')
+  window.localStorage.removeItem('sessionEmail')
+  window.localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY)
+}
+
+const isStoredSessionExpired = () => {
+  if (typeof window === 'undefined') return false
+  const raw = Number(window.localStorage.getItem(SESSION_LAST_ACTIVITY_KEY))
+  if (!Number.isFinite(raw) || raw <= 0) return false
+  return Date.now() - raw > SESSION_TIMEOUT_MS
 }
 
 function App() {
   const initialUser =
     typeof window !== 'undefined'
       ? (() => {
+          if (isStoredSessionExpired()) {
+            const expiredEmail = window.localStorage.getItem('sessionEmail')
+            appendAuditLog('session_expired', {
+              user: expiredEmail || 'sesion-local',
+            })
+            clearStoredSession()
+            return null
+          }
           const email = window.localStorage.getItem('sessionEmail')
           if (!email) return null
           return MOCK_USERS.find((user) => user.email === email) ?? null
@@ -69,7 +95,12 @@ function App() {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('sessionRole', user.role)
       window.localStorage.setItem('sessionEmail', user.email)
+      window.localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()))
     }
+    appendAuditLog('login_success', {
+      user: user.email,
+      role: user.role,
+    })
   }
 
   useEffect(() => {
@@ -79,25 +110,60 @@ function App() {
     }
   }, [])
 
-  const handleLogout = () => {
+  const handleLogout = useCallback((reason = 'manual') => {
+    const previousUser = currentUser
+    const previousRole = userRole
     setCurrentUser(null)
     setUserRole(null)
     setIsAuthenticated(false)
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem('sessionRole')
-      window.localStorage.removeItem('sessionEmail')
-    }
-  }
+    clearStoredSession()
+    appendAuditLog(reason === 'timeout' ? 'session_expired' : 'logout', {
+      user: previousUser?.email || 'sesion-local',
+      role: previousRole || 'sin-rol',
+      metadata: { reason },
+    })
+  }, [currentUser, userRole])
 
   const ProtectedRoute = ({ children, allowedRoles }) => {
     if (!isAuthenticated) {
       return <Navigate to="/" replace />
     }
     if (allowedRoles && !allowedRoles.includes(userRole)) {
+      appendAuditLog('route_denied', {
+        user: currentUser?.email,
+        role: userRole,
+        metadata: { allowedRoles },
+      })
       return <Navigate to="/dashboard" replace />
     }
     return children
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isAuthenticated) return undefined
+
+    const markActivity = () => {
+      window.localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()))
+    }
+    const validateSession = () => {
+      if (isStoredSessionExpired()) {
+        handleLogout('timeout')
+      }
+    }
+    const events = ['click', 'keydown', 'mousemove', 'focus']
+    events.forEach((eventName) =>
+      window.addEventListener(eventName, markActivity),
+    )
+    markActivity()
+    const intervalId = window.setInterval(validateSession, 60 * 1000)
+
+    return () => {
+      events.forEach((eventName) =>
+        window.removeEventListener(eventName, markActivity),
+      )
+      window.clearInterval(intervalId)
+    }
+  }, [isAuthenticated, handleLogout])
 
   const renderProtected = (Component, accessKey) => (
     <ProtectedRoute allowedRoles={ROUTE_ACCESS[accessKey]}>

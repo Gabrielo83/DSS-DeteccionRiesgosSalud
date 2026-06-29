@@ -1,9 +1,18 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import AppHeader from "../components/AppHeader.jsx";
 import { mockEmployees } from "../data/mockEmployees.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import { readEmployeeHistory } from "../utils/historyStorage.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
+import {
+  formatLocalDate,
+  getLocalDateTimestamp,
+  parseLocalDate,
+} from "../utils/dateUtils.js";
+import {
+  MEDICAL_HISTORY_UPDATED_EVENT,
+  MEDICAL_VALIDATIONS_UPDATED_EVENT,
+} from "../utils/storageKeys.js";
 
 const studyTemplates = [
   {
@@ -56,10 +65,10 @@ const buildMedicalFiles = (employees) =>
 const medicalFiles = buildMedicalFiles(mockEmployees);
 
 const isWithinRange = (dateValue, startDate, endDate) => {
-  const parsedDate = Date.parse(dateValue);
-  if (Number.isNaN(parsedDate)) return true;
-  const start = startDate ? Date.parse(startDate) : null;
-  const end = endDate ? Date.parse(endDate) : null;
+  const parsedDate = getLocalDateTimestamp(dateValue);
+  if (parsedDate === null) return true;
+  const start = startDate ? getLocalDateTimestamp(startDate) : null;
+  const end = endDate ? getLocalDateTimestamp(endDate, true) : null;
   if (start && parsedDate < start) return false;
   if (end && parsedDate > end) return false;
   return true;
@@ -67,22 +76,16 @@ const isWithinRange = (dateValue, startDate, endDate) => {
 
 const getDaysBetween = (startDate, endDate) => {
   if (!startDate || !endDate) return null;
-  const start = Date.parse(startDate);
-  const end = Date.parse(endDate);
-  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  const start = getLocalDateTimestamp(startDate);
+  const end = getLocalDateTimestamp(endDate);
+  if (start === null || end === null) return null;
   const difference = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
   return difference > 0 ? difference : null;
 };
 
 const formatDisplayDate = (value) => {
   if (!value) return "Sin fecha";
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  return new Date(timestamp).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatLocalDate(value);
 };
 
 const pathologyCategoryMap = Object.fromEntries(
@@ -91,6 +94,29 @@ const pathologyCategoryMap = Object.fromEntries(
 
 const formatPathologyCategory = (value) =>
   pathologyCategoryMap[value] || value || "No indicado";
+
+const getLastNameSortKey = (fullName = "") => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return fullName;
+  const firstNames = parts.slice(0, -1).join(" ");
+  const lastName = parts[parts.length - 1];
+  return `${lastName}, ${firstNames}`;
+};
+
+const sortEmployees = (employees, sortMode) =>
+  employees.slice().sort((a, b) => {
+    if (sortMode === "sector") {
+      const sectorCompare = (a.sector || "").localeCompare(b.sector || "", "es", {
+        sensitivity: "base",
+      });
+      if (sectorCompare !== 0) return sectorCompare;
+    }
+    return getLastNameSortKey(a.fullName).localeCompare(
+      getLastNameSortKey(b.fullName),
+      "es",
+      { sensitivity: "base" },
+    );
+  });
 
 const statusStyles = {
   Apto:
@@ -118,6 +144,49 @@ const normalizeReferenceValue = (value = "") => {
     return segments.slice(0, -1).join("-");
   }
   return value;
+};
+
+const parseReferenceTimestamp = (reference = "") => {
+  const match = String(reference).match(/CM-(\d{12})/);
+  if (!match) return "";
+  const [, stamp] = match;
+  const year = Number(stamp.slice(0, 4));
+  const month = Number(stamp.slice(4, 6)) - 1;
+  const day = Number(stamp.slice(6, 8));
+  const hour = Number(stamp.slice(8, 10));
+  const minute = Number(stamp.slice(10, 12));
+  const parsed = new Date(year, month, day, hour, minute);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+};
+
+const normalizePeriodDate = (value) => {
+  if (!value) return "";
+  if (typeof value === "number") return new Date(value).toISOString();
+  const parsed = parseLocalDate(value);
+  return parsed ? parsed.toISOString() : "";
+};
+
+const resolveCertificatePeriodDate = (record = {}) => {
+  const referenceDate = parseReferenceTimestamp(record.reference || record.id);
+  const candidates = [
+    record.presentedAt,
+    record.validatedAt,
+    record.lastDecisionAt,
+    record.receivedTimestamp,
+    record.submittedAt,
+    record.submitted,
+    record.createdAt,
+    record.updatedAt,
+    referenceDate,
+    record.issued,
+    record.issueDate,
+    record.startDate,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePeriodDate(candidate);
+    if (normalized) return normalized;
+  }
+  return "";
 };
 
 const statusPriority = (status = "") => {
@@ -202,8 +271,40 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
     certificate: null,
   });
   const [showEmployeeList, setShowEmployeeList] = useState(false);
+  const [employeeListSort, setEmployeeListSort] = useState("lastName");
+  const [storageVersion, setStorageVersion] = useState(0);
+
+  const sortedEmployeeList = useMemo(
+    () => sortEmployees(mockEmployees, employeeListSort),
+    [employeeListSort],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const refreshCertificates = () => {
+      setStorageVersion((current) => current + 1);
+    };
+    window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshCertificates);
+    window.addEventListener(
+      MEDICAL_VALIDATIONS_UPDATED_EVENT,
+      refreshCertificates,
+    );
+    window.addEventListener("storage", refreshCertificates);
+    return () => {
+      window.removeEventListener(
+        MEDICAL_HISTORY_UPDATED_EVENT,
+        refreshCertificates,
+      );
+      window.removeEventListener(
+        MEDICAL_VALIDATIONS_UPDATED_EVENT,
+        refreshCertificates,
+      );
+      window.removeEventListener("storage", refreshCertificates);
+    };
+  }, []);
 
   const certificates = useMemo(() => {
+    void storageVersion;
     const profile = selectedRecord.profile;
     const employeeKey = profile.id || profile.name;
     const history = readEmployeeHistory(employeeKey);
@@ -216,6 +317,10 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
         normalizeReferenceValue(item.reference) ||
         normalizeReferenceValue(item.id);
       const issuedValue = item.issued || item.issueDate || "";
+      const periodDate = resolveCertificatePeriodDate({
+        ...item,
+        reference: item.reference || item.id,
+      });
       return {
         id: item.id || `HIS-${profile.id}-${item.issued || Date.now()}`,
         reference: reference || "--",
@@ -223,6 +328,7 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
         detail: item.notes || "",
         issued: issuedValue,
         issuedLabel: formatDisplayDate(issuedValue),
+        periodDate,
         status: item.status || "Validado",
         reviewer: item.reviewer || "Equipo Medico",
         institution: item.institution || "No indicado",
@@ -241,6 +347,7 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
         (item.receivedTimestamp
           ? new Date(item.receivedTimestamp).toISOString()
           : item.submitted || "");
+      const periodDate = resolveCertificatePeriodDate(item);
       return {
         id: item.reference,
         reference: reference || item.reference || "--",
@@ -249,6 +356,7 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
         detail: item.detailedReason || "",
         issued: issuedValue,
         issuedLabel: formatDisplayDate(issuedValue),
+        periodDate,
         status: item.status || "Pendiente",
         reviewer: "Pendiente de evaluacion",
         institution: item.institution || "No indicado",
@@ -297,9 +405,9 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
     });
 
     return Array.from(recordsByReference.values()).filter((record) =>
-      isWithinRange(record.issued, startDate, endDate),
+      isWithinRange(record.periodDate || record.issued, startDate, endDate),
     );
-  }, [selectedRecord, periodPreset, customRange]);
+  }, [selectedRecord, periodPreset, customRange, storageVersion]);
   const recurrenceCount = certificates.length;
   const remainingForDashboard = Math.max(0, 3 - recurrenceCount);
   const formatDaysLabel = (value) => {
@@ -568,10 +676,14 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
                 </div>
               </div>
               <div className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <label
+                  htmlFor="medical-records-period"
+                  className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                >
                   Seleccionar periodo
                 </label>
                 <select
+                  id="medical-records-period"
                   value={periodPreset}
                   onChange={handlePeriodChange}
                   className="rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 focus:border-slate-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -713,18 +825,54 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
               </button>
             </div>
 
+            <div className="mt-5 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/70 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Organizar por
+              </span>
+              <div className="inline-flex w-fit rounded-full border border-slate-200 bg-white p-1 text-xs font-semibold shadow-sm dark:border-slate-700 dark:bg-slate-950">
+                <button
+                  type="button"
+                  onClick={() => setEmployeeListSort("lastName")}
+                  className={`rounded-full px-3 py-1 transition ${
+                    employeeListSort === "lastName"
+                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-950"
+                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                  aria-pressed={employeeListSort === "lastName"}
+                >
+                  Apellido y nombre
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmployeeListSort("sector")}
+                  className={`rounded-full px-3 py-1 transition ${
+                    employeeListSort === "sector"
+                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-950"
+                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                  aria-pressed={employeeListSort === "sector"}
+                >
+                  Sector
+                </button>
+              </div>
+            </div>
+
             <div className="mt-4 max-h-[520px] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700 shadow-inner dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200">
               <ul className="space-y-2">
-                {mockEmployees
-                  .slice()
-                  .sort((a, b) => a.fullName.localeCompare(b.fullName))
-                  .map((emp) => (
+                {sortedEmployeeList.map((emp) => (
                     <li
                       key={emp.employeeId}
                       className="flex items-center justify-between rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100 dark:bg-slate-900 dark:ring-slate-800"
                     >
-                      <span className="font-semibold text-slate-900 dark:text-white">
-                        {emp.fullName}
+                      <span>
+                        <span className="block font-semibold text-slate-900 dark:text-white">
+                          {emp.fullName}
+                        </span>
+                        {employeeListSort === "lastName" ? (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {getLastNameSortKey(emp.fullName)}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                         {emp.sector}

@@ -99,7 +99,7 @@ export const removeOperation = (id) => {
   persistQueue(filtered);
 };
 
-const defaultHandler = async (operation) => {
+const defaultHandler = async () => {
   // Simula sync remoto; en producción reemplazar por llamadas HTTP/Firebase.
   const isOffline = hasNavigator() && navigator.onLine === false;
   if (isOffline) {

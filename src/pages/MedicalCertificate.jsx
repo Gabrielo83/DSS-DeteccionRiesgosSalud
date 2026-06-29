@@ -329,7 +329,7 @@ function MedicalCertificate({ isDark, onToggleTheme }) {
                   <div>
                     <p className="font-semibold">{uploadedFile.name}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Peso: {uploadedFile.size} � - Subido:{" "}
+                      Peso: {uploadedFile.size} - Subido:{" "}
                       {uploadedFile.uploadedAt}
                     </p>
                   </div>

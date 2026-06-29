@@ -36,8 +36,11 @@ export const mapScoreToRisk = (value) => {
 export const calculateRiskScore = ({
   absenceType = "",
   detailedReason = "",
+  pathologyCategory = "",
+  durationDays = 0,
+  occurrenceCount = 1,
 } = {}) => {
-  const text = `${absenceType} ${detailedReason}`.toLowerCase();
+  const text = `${absenceType} ${detailedReason} ${pathologyCategory}`.toLowerCase();
   const profile =
     riskProfiles.find((item) =>
       item.keywords.some((keyword) => text.includes(keyword.toLowerCase())),
@@ -46,6 +49,23 @@ export const calculateRiskScore = ({
 
   if (absenceType.toLowerCase().includes("accidente")) {
     score = Math.min(10, score + 0.5);
+  }
+  const safeDuration = Number(durationDays);
+  if (Number.isFinite(safeDuration)) {
+    if (safeDuration >= 14) {
+      score += 0.8;
+    } else if (safeDuration >= 7) {
+      score += 0.4;
+    }
+  }
+
+  const safeOccurrences = Number(occurrenceCount);
+  if (Number.isFinite(safeOccurrences)) {
+    if (safeOccurrences >= 3) {
+      score += 1;
+    } else if (safeOccurrences === 2) {
+      score += 0.5;
+    }
   }
 
   const assessment = mapScoreToRisk(score);

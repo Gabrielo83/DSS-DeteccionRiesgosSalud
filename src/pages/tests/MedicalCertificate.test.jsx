@@ -77,7 +77,6 @@ describe("Funcionalidad de Certificados Médicos", () => {
     await user.upload(fileInput, file);
     expect(screen.getByText("certificado.pdf")).toBeInTheDocument();
 
-    const preview = screen.getByText("certificado.pdf").closest("div");
     const removeButton = screen.getByRole("button", {
       name: /Eliminar archivo/i,
     });

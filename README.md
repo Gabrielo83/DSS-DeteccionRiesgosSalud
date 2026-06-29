@@ -1,72 +1,92 @@
-# DSS Detección de Riesgos de Salud
+# DSS Deteccion de Riesgos de Salud
 
-Sistema web para registrar ausencias, validar certificados médicos, administrar legajos y visualizar indicadores de salud ocupacional en tiempo real.
+Sistema web para registrar ausencias, validar certificados medicos, administrar legajos y visualizar indicadores de salud ocupacional.
 
 ## Funcionalidades principales
 
-- **Login por roles** (superAdmin, médico, administrativo, gerente, respRRHH).
-- **Registro de ausencias** con búsqueda de empleados, cálculo automático de días, borradores, adjuntos con vista previa y envío para revisión.
-- **Validación médica** con filtros, modal clínico, asignación de riesgo, planes preventivos, historial y paginación.
-- **Legajos médicos digitales**: búsqueda con autocompletado, certificados por periodo, carga masiva de históricos, vista previa de documentos.
-- **Dashboard operativo**: métricas de ausentismo, alertas activas, mapa de calor por sector, tabla de riesgo individual y planes preventivos.
-- **Demo seed** (`window.runDemoSeed()`) para poblar la app rápidamente con casos de ejemplo en entorno local.
+- Login por roles: superAdmin, medico, administrativo, gerente y respRRHH, con permisos diferenciados por alcance funcional.
+- Registro de ausencias con busqueda de empleados, calculo automatico de dias, borradores, adjuntos con vista previa y envio para revision.
+- Validacion medica con filtros, modal clinico, asignacion de riesgo, planes preventivos, historial y paginacion.
+- Legajos medicos digitales con busqueda, certificados por periodo, carga masiva de historicos y vista previa de documentos.
+- Dashboard operativo con metricas de ausentismo, alertas activas, mapa de calor por sector, tabla de riesgo individual y planes preventivos.
+- Persistencia en navegador con IndexedDB/localStorage y cola de operaciones para continuidad operativa.
+- Politica de contrasena segura, expiracion de sesion por inactividad y auditoria local de eventos criticos.
 
 ## Stack
 
 - React + Vite + TailwindCSS
 - React Router
-- Context API para autenticación simulada
-- LocalStorage como datastore temporal
-- Firebase - BaaS
-- Vitest + Testing Library para pruebas unitarias/integrales
+- Context API para autenticacion y permisos por rol
+- IndexedDB/localStorage para persistencia del prototipo
+- Vitest + Testing Library para pruebas unitarias e integrales
 
-## Configuración
+## Alcance de roles
+
+- superAdmin: acceso completo.
+- medico: validacion, legajos, registro, certificados y dashboard.
+- administrativo: dashboard, registro de ausencias y carga documental.
+- respRRHH: dashboard y registro administrativo de ausencias.
+- gerente: dashboard de indicadores.
+
+## Configuracion
 
 1. Clonar el repositorio.
-2. `npm install`
-3. Copiar `.env.example` en `.env` y completar las variables (Firebase + credenciales demo).
-4. `npm run dev -- --host`
-5. Abrí [http://localhost:5173](http://localhost:5173) (desde desktop o móvil en la misma red).
-
-## Scripts útiles
+2. Instalar dependencias:
 
 ```bash
-# levantar en modo desarrollo
-npm run dev -- --host
-
-# ejecutar pruebas unitarias
-npm test
-
-# ejecutar seed de demo (en la consola del navegador)
-window.runDemoSeed()
+npm install
 ```
 
-## Demo
+3. Levantar la aplicacion:
 
-1. **Login**
-2. **Registrar ausencia**: seleccionar un empleado, completar diagnóstico, adjuntar archivo y enviar para revisión.
-3. **Validación médica**: abrir el caso recién creado, visualizar el documento, asignar riesgo, aprobar/rechazar.
-4. **Legajos médicos**: buscar al empleado, filtrar por periodo y revisar el historial actualizado.
-5. **Dashboard**: verificar cómo se actualizan métricas, badges y tablas (ordenar por “Recibido” para ver los últimos casos).
+```bash
+npm run dev -- --host
+```
 
-## Login
+4. Abrir [http://localhost:5173](http://localhost:5173).
+
+## Scripts utiles
+
+```bash
+# levantar en desarrollo
+npm run dev -- --host
+
+# ejecutar pruebas
+npm test
+
+# verificar calidad de codigo
+npm run lint
+
+# generar build de produccion
+npm run build
+```
+
+## Flujo de presentacion
+
+1. Iniciar sesion con un usuario autorizado.
+2. Registrar una ausencia: seleccionar empleado, completar diagnostico, adjuntar archivo y enviar para revision.
+3. Validar el certificado: abrir el caso, visualizar el documento, asignar riesgo, aprobar/rechazar o marcar para revision.
+4. Consultar legajo medico: buscar el empleado y revisar el historial actualizado.
+5. Revisar dashboard: verificar metricas, alertas, mapa de calor, recurrencias y planes preventivos.
+
+## Usuarios de referencia
+
+- superadmin@empresa.com / Super123*
+- medico@empresa.com / Medico123*
+- administrativo@empresa.com / Administra123*
+- gerente@empresa.com / Gerente123*
+- rrhh@empresa.com / Rrhh123*
+
+## Capturas
+
+### Login
 
 ![Login](./src/assets/gifs/login.gif)
 
-## Dashboard
+### Dashboard
 
 ![Dashboard](./src/assets/gifs/dashboard.gif)
 
-## Legajo Médico
+### Legajo Medico
 
 ![Legajo Medico](./src/assets/gifs/legajo-medico.gif)
-
-## Próximos pasos
-
-- Integración con Firebase (Auth + Firestore + Storage).
-- Integración con IndexedDB (Offline First)
-- Estados sincronizados entre áreas (RRHH ↔ Médico ↔ Dashboard).
-
----
-
-Si Necesitás regenerar datos de demo ejecutá `window.runDemoSeed()` en la consola del navegador y se precargan ~20 certificados, historiales y planes preventivos para la presentación.\*\*\*

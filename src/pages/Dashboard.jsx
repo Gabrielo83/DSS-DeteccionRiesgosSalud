@@ -1,10 +1,15 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader.jsx";
 import mockEmployees from "../data/mockEmployees.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
 import { readAllHistory } from "../utils/historyStorage.js";
 import calculateRiskScore, { mapScoreToRisk } from "../utils/riskUtils.js";
+import {
+  formatLocalDate,
+  getLocalDateTimestamp,
+  parseLocalDate,
+} from "../utils/dateUtils.js";
 import {
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
@@ -15,7 +20,6 @@ import {
   generatePreventivePlanTemplate,
   shapePlanForDisplay,
 } from "../utils/preventivePlan.js";
-import AuthContext from "../context/AuthContext.jsx";
 
 const levelToneMap = {
   Alta: "bg-rose-100 text-rose-700",
@@ -54,6 +58,7 @@ const extractScoreValue = (input) => {
 };
 
 const MIN_RECURRENT_COUNT = 3;
+const RECURRENCE_WINDOW_MONTHS = 6;
 const AUTO_SYNC_INTERVAL_MS = 150 * 1000;
 const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
   new Date(2024, i, 1).toLocaleDateString("es-AR", { month: "long" }),
@@ -61,9 +66,9 @@ const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
 
 const countWorkingDays = (startDate, endDate) => {
   if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (Number.isNaN(start) || Number.isNaN(end) || start > end) return 0;
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  if (!start || !end || start > end) return 0;
   let days = 0;
   const cursor = new Date(start);
   cursor.setHours(0, 0, 0, 0);
@@ -77,9 +82,9 @@ const countWorkingDays = (startDate, endDate) => {
 };
 
 const diffDaysInclusive = (start, end) => {
-  const a = start ? new Date(start) : null;
-  const b = end ? new Date(end) : null;
-  if (!a || !b || Number.isNaN(a) || Number.isNaN(b)) return 0;
+  const a = start ? parseLocalDate(start) : null;
+  const b = end ? parseLocalDate(end) : null;
+  if (!a || !b) return 0;
   const diff = Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1;
   return diff > 0 ? diff : 0;
 };
@@ -94,12 +99,8 @@ const formatDateTimeLabel = (value) => {
 
 const formatDateValue = (value) => {
   if (!value) return "--";
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  return new Date(timestamp).toLocaleDateString("es-AR", {
-    day: "2-digit",
+  return formatLocalDate(value, {
     month: "short",
-    year: "numeric",
   });
 };
 
@@ -131,9 +132,49 @@ const resolvePathologyLabel = (payload = {}) => {
 
 const isWithinPeriod = (dateValue, start, end) => {
   if (!dateValue) return false;
-  const ts = Date.parse(dateValue);
-  if (Number.isNaN(ts)) return false;
+  const ts = getLocalDateTimestamp(dateValue);
+  if (ts === null) return false;
   return ts >= start && ts <= end;
+};
+
+const resolveOccurrenceTimestamp = (payload = {}) => {
+  const candidates = [
+    payload.startDate,
+    payload.issueDate,
+    payload.issued,
+    payload.validityDate,
+    payload.updatedAt,
+    payload.submitted,
+  ];
+  for (const value of candidates) {
+    if (!value) continue;
+    const ts = getLocalDateTimestamp(value);
+    if (ts !== null) return ts;
+  }
+  return Date.now();
+};
+
+const normalizeCertificateReference = (value = "") => {
+  if (!value) return "";
+  const segments = String(value).split("-");
+  const last = segments[segments.length - 1];
+  if (/^\d{7,}$/.test(last)) {
+    return segments.slice(0, -1).join("-");
+  }
+  return String(value);
+};
+
+const countOccurrencesInRollingWindow = (timestamps = []) => {
+  const valid = timestamps
+    .filter((timestamp) => Number.isFinite(timestamp))
+    .sort((a, b) => a - b);
+  if (!valid.length) return 0;
+  const latest = valid[valid.length - 1];
+  const windowStart = new Date(latest);
+  windowStart.setMonth(windowStart.getMonth() - RECURRENCE_WINDOW_MONTHS);
+  return valid.filter(
+    (timestamp) => timestamp >= windowStart.getTime() && timestamp <= latest,
+  ).length;
 };
 
 /* codigo comentado para referencia futura
@@ -153,14 +194,13 @@ const legendLevels = [
 */
 
 function Dashboard({ isDark, onToggleTheme }) {
-  const auth = useContext(AuthContext);
   const [validationQueue, setValidationQueue] = useState(() =>
     typeof window === "undefined" ? [] : readValidationQueue(),
   );
   const [historySnapshot, setHistorySnapshot] = useState(() =>
     typeof window === "undefined" ? {} : readAllHistory(),
   );
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const [periodMonth, setPeriodMonth] = useState(today.getMonth());
   const [periodYear, setPeriodYear] = useState(today.getFullYear());
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
@@ -174,6 +214,8 @@ function Dashboard({ isDark, onToggleTheme }) {
     isOpen: false,
     sector: "",
     items: [],
+    validatedCount: 0,
+    pendingCount: 0,
   });
   const [planModal, setPlanModal] = useState({
     isOpen: false,
@@ -320,9 +362,18 @@ function Dashboard({ isDark, onToggleTheme }) {
     (sector) => {
       const { startMs, endMs } = periodRange;
       const totalsByEmployee = new Map();
+      const totalReferences = new Set();
 
-      const registerTotal = (employeeKey, days) => {
+      const registerTotal = (employeeKey, days, reference) => {
         if (!employeeKey) return;
+        const normalizedReference = normalizeCertificateReference(reference);
+        const totalKey = normalizedReference
+          ? `${employeeKey}::${normalizedReference}`
+          : "";
+        if (totalKey) {
+          if (totalReferences.has(totalKey)) return;
+          totalReferences.add(totalKey);
+        }
         const safeDays = Number.isFinite(days) ? days : Number(days);
         const increment = Number.isFinite(safeDays) ? safeDays : 0;
         const current = totalsByEmployee.get(employeeKey) || { days: 0, count: 0 };
@@ -350,7 +401,11 @@ function Dashboard({ isDark, onToggleTheme }) {
           entry.days ||
           diffDaysInclusive(entry.startDate, entry.endDate) ||
           0;
-        registerTotal(entry.employeeId || entry.employee, days);
+        registerTotal(
+          entry.employeeId || entry.employee,
+          days,
+          entry.reference || entry.id,
+        );
       });
 
       validationQueue.forEach((entry) => {
@@ -364,26 +419,18 @@ function Dashboard({ isDark, onToggleTheme }) {
           entry.days ||
           diffDaysInclusive(entry.startDate, entry.endDate) ||
           0;
-        registerTotal(entry.employeeId || entry.employee, days);
+        registerTotal(
+          entry.employeeId || entry.employee,
+          days,
+          entry.reference || entry.id,
+        );
       });
 
       const validatedItems = filteredValidated
         .filter((entry) => {
           const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
           const entrySector = entry.sector || base?.sector || "Sin sector";
-          const score =
-            extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ??
-            calculateRiskScore({
-              absenceType:
-                entry.absenceType ||
-                entry.certificateType ||
-                entry.title ||
-                "",
-              detailedReason:
-                entry.detailedReason || entry.notes || entry.detail || "",
-            })?.score ??
-            0;
-          return entrySector === sector && score >= 5;
+          return entrySector === sector;
         })
         .map((entry) => {
           const score =
@@ -396,6 +443,11 @@ function Dashboard({ isDark, onToggleTheme }) {
                 "",
               detailedReason:
                 entry.detailedReason || entry.notes || entry.detail || "",
+              pathologyCategory: entry.pathologyCategory,
+              durationDays:
+                entry.absenceDays ||
+                entry.days ||
+                diffDaysInclusive(entry.startDate, entry.endDate),
             })?.score ??
             0;
           const level = mapScoreToRisk(score).level;
@@ -473,22 +525,33 @@ function Dashboard({ isDark, onToggleTheme }) {
           return 0;
         });
 
+      const modalItems = [...validatedItems, ...queueItems].map((item) => ({
+        ...item,
+        sectorHeadcount: {
+          active: headcountBySector.get(sector) || 0,
+        },
+      }));
+
       setHeatmapModal({
         isOpen: true,
         sector,
-        items: [...validatedItems, ...queueItems].map((item) => ({
-          ...item,
-          sectorHeadcount: {
-            active: headcountBySector.get(sector) || 0,
-          },
-        })),
+        items: modalItems,
+        validatedCount: validatedItems.length,
+        pendingCount: queueItems.length,
       });
     },
-    [filteredValidated, validationQueue, employeeIndexById, headcountBySector, allHistoryEntries, periodRange],
+    [filteredValidated, validationQueue, headcountBySector, allHistoryEntries, periodRange],
   );
 
   const closeHeatmapModal = useCallback(
-    () => setHeatmapModal({ isOpen: false, sector: "", items: [] }),
+    () =>
+      setHeatmapModal({
+        isOpen: false,
+        sector: "",
+        items: [],
+        validatedCount: 0,
+        pendingCount: 0,
+      }),
     [],
   );
 
@@ -498,25 +561,6 @@ function Dashboard({ isDark, onToggleTheme }) {
       ...validatedBySector.keys(),
       ...alertsBySector.keys(),
     ]);
-
-    const classifyTone = (rate, avgRisk, alerts) => {
-      if (alerts > 0 || (avgRisk != null && avgRisk >= 7) || rate >= 10) {
-        return {
-          status: "Riesgo alto",
-          tone: "from-rose-500/90 to-amber-400/90",
-        };
-      }
-      if ((avgRisk != null && avgRisk >= 5) || rate >= 6) {
-        return {
-          status: "Riesgo medio",
-          tone: "from-amber-400/90 to-lime-400/90",
-        };
-      }
-      return {
-        status: "Riesgo bajo",
-          tone: "from-emerald-500/90 to-sky-400/90",
-        };
-    };
 
     const items = Array.from(sectors).map((sector) => {
       const headcount = headcountBySector.get(sector) || 0;
@@ -536,6 +580,11 @@ function Dashboard({ isDark, onToggleTheme }) {
                   "",
                 detailedReason:
                   entry.detailedReason || entry.notes || entry.detail || "",
+                pathologyCategory: entry.pathologyCategory,
+                durationDays:
+                  entry.absenceDays ||
+                  entry.days ||
+                  diffDaysInclusive(entry.startDate, entry.endDate),
               });
               return sum + (computed?.score ?? 0);
             }, 0) / validated.length
@@ -549,7 +598,6 @@ function Dashboard({ isDark, onToggleTheme }) {
       const rate = available > 0 ? (daysLost / available) * 100 : 0;
 
       const classifyTone = () => {
-        // Sin datos validados
         if (validated.length === 0) {
           if (alerts > 0) {
             return {
@@ -559,14 +607,18 @@ function Dashboard({ isDark, onToggleTheme }) {
           }
           return { status: "Sin datos", tone: "from-slate-400/70 to-slate-500/70" };
         }
-        // Riesgo se prioriza sobre alertas; alertas empujan a medio salvo que el score sea muy bajo
         if (avgRisk != null && avgRisk >= 7) {
-          return { status: "Riesgo alto", tone: "from-rose-500/90 to-amber-400/90" };
+          return {
+            status: alerts > 0 ? "Riesgo alto + alertas" : "Riesgo alto",
+            tone: "from-rose-500/90 to-amber-400/90",
+          };
         }
         if (avgRisk != null && avgRisk >= 5) {
-          return { status: "Riesgo medio", tone: "from-amber-400/90 to-lime-400/90" };
+          return {
+            status: alerts > 0 ? "Riesgo medio + alertas" : "Riesgo medio",
+            tone: "from-amber-400/90 to-lime-400/90",
+          };
         }
-        // Riesgo bajo (<5): solo sube a medio si hay muchas alertas o tasa alta
         if (alerts >= 3 || rate >= 12) {
           return { status: "Riesgo medio", tone: "from-amber-400/90 to-lime-400/90" };
         }
@@ -575,6 +627,7 @@ function Dashboard({ isDark, onToggleTheme }) {
 
       const toneData = classifyTone();
       const statsParts = [`${headcount} activos`];
+      if (validated.length > 0) statsParts.push(`${validated.length} validados`);
       if (alerts > 0) statsParts.push(`${alerts} alertas`);
 
       return {
@@ -587,7 +640,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         status: toneData.status,
         tone: toneData.tone,
         scoreLabel: avgRisk != null ? `${avgRisk.toFixed(1)}/10` : "--",
-        stats: statsParts.join(" • "),
+        stats: statsParts.join(" - "),
         onClick: () => openHeatmapModal(sector),
         headcountInfo: {
           active: headcount,
@@ -602,7 +655,13 @@ function Dashboard({ isDark, onToggleTheme }) {
         b.alerts - a.alerts ||
         b.rate - a.rate,
     );
-  }, [alertsBySector, headcountBySector, validatedBySector]);
+  }, [
+    alertsBySector,
+    headcountBySector,
+    openHeatmapModal,
+    periodWorkingDays,
+    validatedBySector,
+  ]);
 
   const summaryMetrics = useMemo(() => {
     const periodWorkingDays = countWorkingDays(
@@ -649,7 +708,15 @@ function Dashboard({ isDark, onToggleTheme }) {
         secondaryValue: periodRange.label,
       },
     ];
-  }, [filteredValidated, headcountActive, riskAverage, alertsCount, periodRange]);
+  }, [
+    filteredValidated,
+    headcountActive,
+    riskAverage,
+    alertsCount,
+    periodRange,
+    periodMonth,
+    periodYear,
+  ]);
 
   const trendData = useMemo(() => {
     const months = [];
@@ -697,6 +764,11 @@ function Dashboard({ isDark, onToggleTheme }) {
               "",
             detailedReason:
               entry.detailedReason || entry.notes || entry.detail || "",
+            pathologyCategory: entry.pathologyCategory,
+            durationDays:
+              entry.absenceDays ||
+              entry.days ||
+              diffDaysInclusive(entry.startDate, entry.endDate),
           });
           return computed?.score ?? null;
         })
@@ -707,7 +779,7 @@ function Dashboard({ isDark, onToggleTheme }) {
           : 0;
       return { ...item, value: avg, count: scores.length };
     });
-  }, [allHistoryEntries, periodMonth, periodYear]);
+  }, [allHistoryEntries, today]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshAll = () => {
@@ -771,7 +843,6 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   const dynamicEmployees = useMemo(() => {
     const buckets = new Map(); // employee -> Map(pathology -> info)
-    const totals = new Map(); // employee -> total certificados validados
 
     const registerOccurrence = (payload = {}, options = {}) => {
       const { isCountable = true } = options;
@@ -797,10 +868,7 @@ function Dashboard({ isDark, onToggleTheme }) {
           : payload.reference
             ? `Ref ${payload.reference}`
             : "Sin identificacion";
-      const updatedAt =
-        Date.parse(
-          payload.updatedAt || payload.submitted || payload.issued || "",
-        ) || Date.now();
+      const updatedAt = resolveOccurrenceTimestamp(payload);
       const manualScore =
         extractScoreValue(payload.riskScoreValue) ??
         extractScoreValue(payload.riskScore);
@@ -818,6 +886,11 @@ function Dashboard({ isDark, onToggleTheme }) {
                 payload.detail ||
                 payload.notes ||
                 "",
+              pathologyCategory: payload.pathologyCategory,
+              durationDays:
+                payload.absenceDays ||
+                payload.days ||
+                diffDaysInclusive(payload.startDate, payload.endDate),
             });
 
       if (!buckets.has(employeeKey)) {
@@ -829,13 +902,17 @@ function Dashboard({ isDark, onToggleTheme }) {
         latest: 0,
         scoreValue: 0,
         display: null,
+        occurrences: [],
       };
 
-      const count = existing.count + (isCountable ? 1 : 0);
+      const occurrences = isCountable
+        ? [...existing.occurrences, updatedAt]
+        : existing.occurrences;
       const next = {
-        count,
+        count: occurrences.length,
         latest: Math.max(existing.latest, updatedAt),
         scoreValue: Math.max(existing.scoreValue, riskSource.score),
+        occurrences,
         display: {
           key: `${employeeKey}-${pathologyLabel}`,
           employeeKey,
@@ -854,9 +931,6 @@ function Dashboard({ isDark, onToggleTheme }) {
       };
 
       employeeBucket.set(pathologyLabel, next);
-      if (isCountable) {
-        totals.set(employeeKey, (totals.get(employeeKey) || 0) + 1);
-      }
     };
 
     validationQueue.forEach((entry) => {
@@ -871,6 +945,9 @@ function Dashboard({ isDark, onToggleTheme }) {
           certificateType: entry.certificateType,
           detail: entry.notes,
           reference: entry.reference,
+          startDate: entry.startDate,
+          issueDate: entry.issueDate,
+          validityDate: entry.validityDate,
           updatedAt: entry.lastDecisionAt || entry.submitted,
           riskScoreValue: entry.riskScoreValue,
           riskScore: entry.riskScore,
@@ -891,6 +968,9 @@ function Dashboard({ isDark, onToggleTheme }) {
           detail: record.notes,
           detailedReason: record.detailedReason,
           reference: record.id,
+          startDate: record.startDate,
+          issueDate: record.issueDate,
+          validityDate: record.validityDate,
           updatedAt: record.issued,
           riskScoreValue: record.riskScore,
           riskScore: record.riskScore,
@@ -902,28 +982,34 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
 
     const candidates = [];
-    buckets.forEach((pathologies, employeeKey) => {
-      const totalCount = totals.get(employeeKey) || 0;
-      if (totalCount < MIN_RECURRENT_COUNT) return;
+    buckets.forEach((pathologies) => {
       let bestInfo = null;
       pathologies.forEach((info) => {
         if (!info?.display) return;
+        const recurrentCount = countOccurrencesInRollingWindow(
+          info.occurrences,
+        );
+        if (recurrentCount < MIN_RECURRENT_COUNT) return;
+        const comparableInfo = { ...info, recurrentCount };
         if (!bestInfo) {
-          bestInfo = info;
+          bestInfo = comparableInfo;
           return;
         }
-        if (info.count > bestInfo.count) {
-          bestInfo = info;
+        if (comparableInfo.recurrentCount > bestInfo.recurrentCount) {
+          bestInfo = comparableInfo;
           return;
         }
-        if (info.count === bestInfo.count && info.scoreValue > bestInfo.scoreValue) {
-          bestInfo = info;
+        if (
+          comparableInfo.recurrentCount === bestInfo.recurrentCount &&
+          comparableInfo.scoreValue > bestInfo.scoreValue
+        ) {
+          bestInfo = comparableInfo;
         }
       });
-      if (bestInfo?.display && bestInfo.count >= MIN_RECURRENT_COUNT) {
+      if (bestInfo?.display) {
         candidates.push({
           ...bestInfo.display,
-          count: totalCount,
+          count: bestInfo.recurrentCount,
           scoreValue: bestInfo.scoreValue,
         });
       }
@@ -1221,9 +1307,8 @@ function Dashboard({ isDark, onToggleTheme }) {
                 ))
               ) : (
                 <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                  Aun no hay datos validados en el periodo seleccionado. Ejecuta{" "}
-                  <code>window.runDemoSeed()</code> para ver un ejemplo o registra
-                  certificados.
+                  Aun no hay datos validados en el periodo seleccionado. Registra
+                  certificados para actualizar este panel.
                 </div>
               )}
             </div>
@@ -1261,7 +1346,7 @@ function Dashboard({ isDark, onToggleTheme }) {
                     const val = Math.min(Math.max(item.value || 0, 0), maxScore);
                     const x = 10 + idx * step;
                     const y = baseY - (val / maxScore) * height;
-                    return { x, y };
+                    return { ...item, x, y, val };
                   });
                   const linePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
                   const areaPoints = `${points
@@ -1309,6 +1394,79 @@ function Dashboard({ isDark, onToggleTheme }) {
                         strokeDasharray="6 6"
                         strokeWidth="1.5"
                       />
+                      {points.map((point, idx) => {
+                        const tooltipX = Math.min(Math.max(point.x, 54), 346);
+                        const tooltipY = Math.max(point.y - 46, 18);
+                        const hasData = point.count > 0;
+                        const label = point.label || "";
+                        return (
+                          <g
+                            key={`${label}-point-${idx}`}
+                            className="group cursor-default outline-none"
+                            tabIndex={0}
+                          >
+                            <line
+                              x1={point.x}
+                              y1="20"
+                              x2={point.x}
+                              y2={baseY}
+                              stroke="rgb(100,116,139)"
+                              strokeWidth="1"
+                              strokeDasharray="3 4"
+                              opacity="0"
+                              className="transition-opacity group-hover:opacity-40 group-focus:opacity-40"
+                            />
+                            <circle
+                              cx={point.x}
+                              cy={point.y}
+                              r="12"
+                              fill="transparent"
+                            />
+                            <circle
+                              cx={point.x}
+                              cy={point.y}
+                              r={hasData ? "4.5" : "3.5"}
+                              fill={hasData ? "rgb(239,68,68)" : "rgb(148,163,184)"}
+                              stroke="white"
+                              strokeWidth="2"
+                              className="transition-transform group-hover:scale-125 group-focus:scale-125"
+                              style={{ transformOrigin: `${point.x}px ${point.y}px` }}
+                            />
+                            <g
+                              opacity="0"
+                              className="pointer-events-none transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+                            >
+                              <rect
+                                x={tooltipX - 50}
+                                y={tooltipY}
+                                width="100"
+                                height="38"
+                                rx="8"
+                                fill="rgb(15,23,42)"
+                                opacity="0.94"
+                              />
+                              <text
+                                x={tooltipX}
+                                y={tooltipY + 15}
+                                textAnchor="middle"
+                                className="fill-white text-[10px] font-semibold"
+                              >
+                                {label}
+                              </text>
+                              <text
+                                x={tooltipX}
+                                y={tooltipY + 29}
+                                textAnchor="middle"
+                                className="fill-slate-200 text-[9px]"
+                              >
+                                {hasData
+                                  ? `${point.val.toFixed(1)} / 10 - ${point.count} cert.`
+                                  : "Sin certificados"}
+                              </text>
+                            </g>
+                          </g>
+                        );
+                      })}
                       {items.map((item, idx) => {
                         const x = 10 + idx * step;
                         const label = item.label || "";
@@ -1449,7 +1607,7 @@ function Dashboard({ isDark, onToggleTheme }) {
                         className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400"
                       >
                         Aun no hay empleados con riesgo individual registrado.
-                        Registra ausencias o ejecuta <code>window.runDemoSeed()</code> para ver datos de ejemplo.
+                        Registra ausencias para actualizar este panel.
                       </td>
                     </tr>
                   )}
@@ -1490,14 +1648,22 @@ function Dashboard({ isDark, onToggleTheme }) {
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
                   {heatmapModal.sector || "Sector"}
                 </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Certificados en alerta para este sector en el periodo
-                  </p>
-                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
-                  HC activos:{" "}
-                  {heatmapModal.items.length
-                    ? heatmapModal.items[0].sectorHeadcount?.active ?? "--"
-                    : "--"}
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Certificados validados y pendientes del sector en el periodo
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                    HC activos:{" "}
+                    {heatmapModal.items.length
+                      ? heatmapModal.items[0].sectorHeadcount?.active ?? "--"
+                      : "--"}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100">
+                    Validados: {heatmapModal.validatedCount}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
+                    Pendientes: {heatmapModal.pendingCount}
+                  </span>
                 </div>
               </div>
               <button
@@ -1566,7 +1732,7 @@ function Dashboard({ isDark, onToggleTheme }) {
                         {item.days ? <span>{item.days} días</span> : null}
                         {item.employeePeriodCertificatesTotal > 1 ? (
                           <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                            Total empleado: {Math.round(item.employeePeriodDaysTotal || 0)} días ({item.employeePeriodCertificatesTotal})
+                            Empleado en periodo: {Math.round(item.employeePeriodDaysTotal || 0)} dias, {item.employeePeriodCertificatesTotal} certificados
                           </span>
                         ) : null}
                         <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">

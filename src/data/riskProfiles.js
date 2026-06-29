@@ -2,7 +2,7 @@ export const riskProfiles = [
   {
     name: "Lumbalgia",
     score: 8.5,
-    keywords: ["lumbalgia", "lumbago", "dolor lumbar"],
+    keywords: ["lumbalgia", "lumbago", "dolor lumbar", "musculoesqueletica"],
   },
   {
     name: "Sindrome Tunel Carpiano",
@@ -22,7 +22,7 @@ export const riskProfiles = [
   {
     name: "Estres Laboral",
     score: 6.2,
-    keywords: ["estres", "estres laboral", "burnout"],
+    keywords: ["estres", "estres laboral", "burnout", "salud-mental"],
   },
   {
     name: "Ansiedad",
