@@ -4,7 +4,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 
 ## Funcionalidades principales
 
-- Login por roles: superAdmin, medico, administrativo, gerente y respRRHH, con permisos diferenciados por alcance funcional.
+- Login por roles: superAdmin, medico, administrativo, administrativoSalud, gerente y respRRHH, con permisos diferenciados por alcance funcional.
 - Registro de ausencias con busqueda de empleados, calculo automatico de dias, borradores, adjuntos con vista previa y envio para revision.
 - Validacion medica con filtros, modal clinico, asignacion de riesgo, planes preventivos, historial y paginacion.
 - Legajos medicos digitales con busqueda, certificados por periodo, carga masiva de historicos y vista previa de documentos.
@@ -27,6 +27,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - superAdmin: acceso completo.
 - medico: validacion, legajos, registro, certificados y dashboard.
 - administrativo: dashboard, registro de ausencias y carga documental.
+- administrativoSalud: dashboard, registro, carga documental y consulta de legajos/certificados historicos sin decision medica.
 - respRRHH: dashboard y registro administrativo de ausencias.
 - gerente: dashboard de indicadores.
 
@@ -113,6 +114,7 @@ npm run build:firebase
 - superadmin@empresa.com / Super123*
 - medico@empresa.com / Medico123*
 - administrativo@empresa.com / Admin123*
+- salud.admin@empresa.com / Salud123*
 - gerente@empresa.com / Gerente123*
 - rrhh@empresa.com / Rrhh123*
 

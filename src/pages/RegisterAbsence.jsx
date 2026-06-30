@@ -15,6 +15,7 @@ import {
 } from "../utils/draftStorage.js";
 import {
   ABSENCE_DRAFTS_UPDATED_EVENT,
+  MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import {
@@ -213,6 +214,21 @@ const formatDateEs = (value) => {
   return `${day}/${month}/${d.getFullYear()}`;
 };
 
+const resolveRecordEndDate = (record) => {
+  if (!record) return "";
+  if (record.endDate) return record.endDate;
+  if (record.validityDate) return record.validityDate;
+  if (!record.issued && !record.startDate) return "";
+  const baseDate = record.issued || record.startDate;
+  if (!record.days) return baseDate;
+  const parsedBase = parseLocalDate(baseDate);
+  if (!parsedBase) return baseDate;
+  const parsedDays = Number(record.days);
+  if (!Number.isFinite(parsedDays) || parsedDays <= 1) return baseDate;
+  const endDate = new Date(parsedBase.getTime() + (parsedDays - 1) * 86400000);
+  return endDate.toISOString().slice(0, 10);
+};
+
 const approvalOptions = [
   { value: "si", label: "Si" },
   { value: "no", label: "No" },
@@ -279,6 +295,7 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
   const [validationQueue, setValidationQueue] = useState([]);
   const [activeRevisionEntry, setActiveRevisionEntry] = useState(null);
   const [overlapWarnings, setOverlapWarnings] = useState([]);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const overlapRanges = useMemo(() => {
     if (!formValues.employeeId) return [];
     const ranges = [];
@@ -324,6 +341,53 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
     certificateReference,
   ]);
 
+  const recentEmployeeCertificates = useMemo(() => {
+    if (!formValues.employeeId) return [];
+    const currentReference = activeRevisionEntry?.reference || certificateReference;
+    const pendingItems = (validationQueue || [])
+      .filter((item) => item.employeeId === formValues.employeeId)
+      .filter((item) => !currentReference || item.reference !== currentReference)
+      .map((item) => ({
+        id: item.reference,
+        reference: item.reference || "Sin referencia",
+        title: item.certificateType || item.absenceType || "Certificado medico",
+        status: item.status || "Pendiente",
+        startDate: item.startDate || item.issueDate || "",
+        endDate: item.endDate || item.validityDate || "",
+        pathology: item.pathologyCategory || "No indicado",
+        source: "En validacion",
+      }));
+    const historyEntries =
+      historyRefreshKey >= 0 ? readEmployeeHistory(formValues.employeeId) || [] : [];
+    const historyItems = historyEntries
+      .filter((record) => !currentReference || record.reference !== currentReference)
+      .map((record) => ({
+        id: record.id || record.reference,
+        reference: record.reference || record.id || "Sin referencia",
+        title: record.title || record.certificateType || "Certificado medico",
+        status: record.status || "Historico",
+        startDate: record.startDate || record.issued || "",
+        endDate: resolveRecordEndDate(record),
+        pathology: record.pathologyCategory || "No indicado",
+        source: "Historico",
+      }));
+
+    return [...pendingItems, ...historyItems]
+      .filter((item) => item.id || item.reference)
+      .sort((a, b) => {
+        const aTime = parseLocalDate(a.startDate)?.getTime() || 0;
+        const bTime = parseLocalDate(b.startDate)?.getTime() || 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5);
+  }, [
+    formValues.employeeId,
+    validationQueue,
+    activeRevisionEntry?.reference,
+    certificateReference,
+    historyRefreshKey,
+  ]);
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const syncDrafts = () => {
@@ -335,6 +399,17 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
     return () => {
       window.removeEventListener(ABSENCE_DRAFTS_UPDATED_EVENT, syncDrafts);
       window.removeEventListener("storage", syncDrafts);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const syncHistory = () => setHistoryRefreshKey((value) => value + 1);
+    window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, syncHistory);
+    window.addEventListener("storage", syncHistory);
+    return () => {
+      window.removeEventListener(MEDICAL_HISTORY_UPDATED_EVENT, syncHistory);
+      window.removeEventListener("storage", syncHistory);
     };
   }, []);
 
@@ -1203,6 +1278,56 @@ const clearCertificateFile = () => {
                 </div>
               </div>
             </SectionCard>
+
+            {formValues.employeeId ? (
+              <SectionCard
+                title="Certificados recientes del colaborador"
+                description="Consulta previa para evitar cargas duplicadas"
+                icon={sectionIcons.certificate}
+              >
+                {recentEmployeeCertificates.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    No hay certificados previos registrados para este colaborador.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentEmployeeCertificates.map((certificate) => (
+                      <div
+                        key={`${certificate.source}-${certificate.reference}`}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900/50"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 dark:text-white">
+                              {certificate.reference} - {certificate.title}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {formatDateEs(certificate.startDate) || "Sin inicio"}
+                              {certificate.endDate
+                                ? ` al ${formatDateEs(certificate.endDate)}`
+                                : ""}
+                              {" · "}
+                              Grupo: {certificate.pathology}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-200 dark:ring-slate-700">
+                              {certificate.source}
+                            </span>
+                            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-200 dark:ring-sky-500/30">
+                              {certificate.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      Si el nuevo periodo se superpone con uno existente, el sistema mostrara una advertencia antes del envio.
+                    </p>
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
 
             <SectionCard
               title="Periodo de Ausencia"

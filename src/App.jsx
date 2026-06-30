@@ -19,16 +19,30 @@ const ROLE_PERMISSIONS = {
   superAdmin: ["dashboard", "registro", "certificados", "validacion", "legajos"],
   medico: ["dashboard", "registro", "certificados", "validacion", "legajos"],
   administrativo: ["dashboard", "registro", "certificados"],
+  administrativoSalud: ["dashboard", "registro", "certificados", "legajos"],
   gerente: ["dashboard"],
   respRRHH: ["dashboard", "registro"],
 };
 
 const ROUTE_ACCESS = {
-  dashboard: ["superAdmin", "medico", "administrativo", "gerente", "respRRHH"],
-  registro: ["superAdmin", "medico", "administrativo", "respRRHH"],
-  certificados: ["superAdmin", "medico", "administrativo"],
+  dashboard: [
+    "superAdmin",
+    "medico",
+    "administrativo",
+    "administrativoSalud",
+    "gerente",
+    "respRRHH",
+  ],
+  registro: [
+    "superAdmin",
+    "medico",
+    "administrativo",
+    "administrativoSalud",
+    "respRRHH",
+  ],
+  certificados: ["superAdmin", "medico", "administrativo", "administrativoSalud"],
   validacion: ["superAdmin", "medico"],
-  legajos: ["superAdmin", "medico"],
+  legajos: ["superAdmin", "medico", "administrativoSalud"],
 };
 
 const clearStoredSession = () => {

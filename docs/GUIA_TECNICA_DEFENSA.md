@@ -80,6 +80,7 @@ Roles:
 - `superAdmin`: acceso completo.
 - `medico`: acceso completo operativo.
 - `administrativo`: registra ausencias, carga documentacion y consulta dashboard operativo.
+- `administrativoSalud`: registra ausencias, carga documentacion y consulta legajos/certificados historicos por pertenecer al circuito de salud ocupacional, sin validar decisiones medicas.
 - `gerente`: consulta dashboard de indicadores y tendencias.
 - `respRRHH`: consulta dashboard y registra informacion administrativa de ausencias.
 
@@ -94,7 +95,7 @@ Como defenderlo:
 
 > La seguridad funcional esta separada entre navegacion y proteccion de rutas. Aunque un usuario escriba una URL manualmente, `ProtectedRoute` valida si su rol esta autorizado.
 
-La restriccion sobre legajos medicos se mantiene alineada con la memoria: solo `superAdmin` y `medico` acceden a la pantalla de legajos, porque contiene informacion clinica sensible. Los perfiles administrativo, RRHH y gerencia quedan limitados a informacion operativa segun su funcion.
+La restriccion sobre legajos medicos se mantiene alineada con la memoria: `superAdmin`, `medico` y `administrativoSalud` pueden consultar legajos porque forman parte del circuito sanitario. El rol `administrativoSalud` solo consulta antecedentes y certificados historicos para evitar duplicados o inconsistencias de carga; no accede a la validacion medica ni puede aprobar, rechazar o modificar decisiones clinicas. Los perfiles administrativo general, RRHH y gerencia quedan limitados a informacion operativa segun su funcion.
 
 ## 5. Flujo funcional completo
 

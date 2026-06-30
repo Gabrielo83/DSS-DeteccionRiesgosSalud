@@ -153,6 +153,7 @@ const roleDisplayMap = {
   superAdmin: "Super Admin",
   medico: "Medico Laboral",
   administrativo: "Administrativo",
+  administrativoSalud: "Administrativo Salud Ocupacional",
   gerente: "Gerente",
   respRRHH: "Responsable RRHH",
 };
