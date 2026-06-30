@@ -78,7 +78,10 @@ function App() {
         })()
       : null;
 
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("theme") === "dark";
+  });
   const [currentUser, setCurrentUser] = useState(initialUser);
   const [userRole, setUserRole] = useState(initialUser?.role ?? null);
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(initialUser));
@@ -95,14 +98,6 @@ function App() {
       window.localStorage.setItem("theme", "light");
     }
   }, [isDark]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const storedTheme = window.localStorage.getItem("theme");
-    if (storedTheme) {
-      setIsDark(storedTheme === "dark");
-    }
-  }, []);
 
   const toggleTheme = () => setIsDark((value) => !value);
 
