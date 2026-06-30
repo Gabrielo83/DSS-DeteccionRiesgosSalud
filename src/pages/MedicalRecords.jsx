@@ -255,11 +255,26 @@ function EyeIcon({ className = "h-4 w-4 text-slate-700" }) {
   );
 }
 
-export default function MedicalRecords({ isDark, onToggleTheme }) {
-  const [selectedRecord, setSelectedRecord] = useState(medicalFiles[0]);
-  const [employeeQuery, setEmployeeQuery] = useState(
-    medicalFiles[0].profile.name
+const resolveInitialMedicalRecord = () => {
+  if (typeof window === "undefined") return medicalFiles[0];
+  const params = new URLSearchParams(window.location.search);
+  const employeeId = params.get("employeeId");
+  const employeeName = params.get("employeeName");
+  const normalizedName = employeeName?.trim().toLowerCase();
+  return (
+    medicalFiles.find(
+      (record) =>
+        record.profile.id === employeeId ||
+        (normalizedName &&
+          record.profile.name.toLowerCase() === normalizedName),
+    ) || medicalFiles[0]
   );
+};
+
+export default function MedicalRecords({ isDark, onToggleTheme }) {
+  const initialRecord = resolveInitialMedicalRecord();
+  const [selectedRecord, setSelectedRecord] = useState(initialRecord);
+  const [employeeQuery, setEmployeeQuery] = useState(initialRecord.profile.name);
   const now = new Date();
   const [periodPreset, setPeriodPreset] = useState("year");
   const [customRange, setCustomRange] = useState({

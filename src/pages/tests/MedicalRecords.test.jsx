@@ -20,6 +20,7 @@ const [firstEmployee, secondEmployee, thirdEmployee] = mockEmployees;
 describe("Funcionalidad de Legajos Medicos", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.history.pushState({}, "", "/");
   });
 
   it("muestra los datos del perfil por defecto", () => {
@@ -49,6 +50,21 @@ describe("Funcionalidad de Legajos Medicos", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(secondEmployee.fullName)).toBeInTheDocument();
     expect(screen.getByText(/Control cardiovascular/i)).toBeInTheDocument();
+  });
+
+  it("abre directamente el legajo indicado por employeeId en la URL", () => {
+    window.history.pushState(
+      {},
+      "",
+      `/legajos-medicos?employeeId=${secondEmployee.employeeId}`,
+    );
+
+    renderPage();
+
+    expect(
+      screen.getByText(new RegExp(`Legajo #${secondEmployee.employeeId}`, "i"))
+    ).toBeInTheDocument();
+    expect(screen.getByText(secondEmployee.fullName)).toBeInTheDocument();
   });
 
   it("restaura el ultimo legajo valido al perder el foco con un nombre inexistente", async () => {
