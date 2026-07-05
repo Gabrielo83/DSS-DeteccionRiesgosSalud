@@ -139,7 +139,8 @@
 
 Notas
 - Usar reference como docId en validaciones_medicas y historial_medico para evitar duplicados.
-- Storage sugerido: certificados/{reference}/{filename}
+- Storage de certificados: `certificados/{reference}/{timestamp}-{filename}`.
+- Firestore no debe persistir `previewUrl` local/base64; debe guardar `storagePath` y `downloadUrl`.
 
 ## Diagrama (Mermaid)
 

@@ -136,7 +136,7 @@ npm run build:firebase
 
 - Completar autenticacion Firebase con roles reales por usuario.
 - Persistir certificados, legajos, borradores, auditoria y planes en Firestore.
-- Subir adjuntos clinicos a Firebase Storage.
+- Verificar adjuntos clinicos en Firebase Storage y consolidar reglas de acceso.
 - Mantener IndexedDB como respaldo offline-first.
 - Mover reglas sensibles y alertas criticas a Cloud Functions.
 

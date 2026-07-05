@@ -3,6 +3,7 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { getFirebaseServices } from "./firebaseClient.js";
 
 const stripUndefined = (value) => {
@@ -19,11 +20,90 @@ const stripUndefined = (value) => {
   return value;
 };
 
+const stripTransientFileData = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(stripTransientFileData);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== "previewUrl")
+        .map(([key, entryValue]) => [key, stripTransientFileData(entryValue)]),
+    );
+  }
+  return value;
+};
+
+const sanitizeFileName = (name = "certificado") =>
+  String(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120) || "certificado";
+
+const dataUrlToBlob = async (dataUrl) => {
+  if (!dataUrl || !String(dataUrl).startsWith("data:")) return null;
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+const uploadCertificateFile = async (storage, reference, certificate) => {
+  const fileMeta = certificate?.certificateFileMeta;
+  if (!fileMeta?.previewUrl || fileMeta.storagePath || fileMeta.downloadUrl) {
+    return certificate;
+  }
+
+  const blob = await dataUrlToBlob(fileMeta.previewUrl);
+  if (!blob) return certificate;
+
+  const safeName = sanitizeFileName(fileMeta.name);
+  const storagePath = `certificados/${reference}/${Date.now()}-${safeName}`;
+  const storageReference = ref(storage, storagePath);
+  await uploadBytes(storageReference, blob, {
+    contentType: fileMeta.type || blob.type || "application/octet-stream",
+    customMetadata: {
+      reference,
+      originalName: fileMeta.name || safeName,
+    },
+  });
+  const downloadUrl = await getDownloadURL(storageReference);
+
+  return {
+    ...certificate,
+    certificateFileMeta: {
+      ...stripTransientFileData(fileMeta),
+      storagePath,
+      downloadUrl,
+      previewUrl: downloadUrl,
+    },
+  };
+};
+
+const prepareSubmitCertificateOperation = async (storage, operation) => {
+  const certificate = operation.payload?.certificate || operation.payload || {};
+  const reference =
+    certificate.reference || operation.payload?.reference || operation.entityId;
+  if (!reference) return operation;
+  const uploadedCertificate = await uploadCertificateFile(
+    storage,
+    reference,
+    certificate,
+  );
+  return {
+    ...operation,
+    payload: {
+      ...operation.payload,
+      certificate: uploadedCertificate,
+    },
+  };
+};
+
 const buildBasePayload = (operation) =>
   stripUndefined({
     id: operation.id,
     type: operation.type,
-    payload: operation.payload || {},
+    payload: stripTransientFileData(operation.payload || {}),
     user: operation.user || null,
     entityId: operation.entityId || null,
     localCreatedAt: operation.createdAt || null,
@@ -44,11 +124,11 @@ const writeDraft = async (db, operation) => {
   const draftId = draft.draftId || operation.payload?.draftId || operation.id;
   await setDoc(
     doc(db, "drafts", draftId),
-    stripUndefined({
+    stripUndefined(stripTransientFileData({
       ...draft,
       sourceOperationId: operation.id,
       updatedAt: serverTimestamp(),
-    }),
+    })),
     { merge: true },
   );
 };
@@ -62,12 +142,12 @@ const writeCertificate = async (db, operation) => {
   }
   await setDoc(
     doc(db, "certificates", reference),
-    stripUndefined({
+    stripUndefined(stripTransientFileData({
       ...certificate,
       reference,
       sourceOperationId: operation.id,
       updatedAt: serverTimestamp(),
-    }),
+    })),
     { merge: true },
   );
 };
@@ -79,30 +159,35 @@ const writeCertificateDecision = async (db, operation) => {
   }
   await setDoc(
     doc(db, "certificateDecisions", reference),
-    stripUndefined({
+    stripUndefined(stripTransientFileData({
       ...operation.payload,
       reference,
       sourceOperationId: operation.id,
       decidedAt: serverTimestamp(),
-    }),
+    })),
     { merge: true },
   );
 };
 
 export const syncOperationToFirestore = async (operation) => {
-  const { db } = getFirebaseServices();
-  await writeOperationAudit(db, operation);
+  const { db, storage } = getFirebaseServices();
+  const preparedOperation =
+    operation.type === "submitCertificate"
+      ? await prepareSubmitCertificateOperation(storage, operation)
+      : operation;
 
-  if (operation.type === "saveDraft") {
-    await writeDraft(db, operation);
+  await writeOperationAudit(db, preparedOperation);
+
+  if (preparedOperation.type === "saveDraft") {
+    await writeDraft(db, preparedOperation);
   }
 
-  if (operation.type === "submitCertificate") {
-    await writeCertificate(db, operation);
+  if (preparedOperation.type === "submitCertificate") {
+    await writeCertificate(db, preparedOperation);
   }
 
-  if (operation.type === "validateCertificate") {
-    await writeCertificateDecision(db, operation);
+  if (preparedOperation.type === "validateCertificate") {
+    await writeCertificateDecision(db, preparedOperation);
   }
 
   return { ok: true };
