@@ -11,6 +11,7 @@ import { MOCK_USERS } from "./data/mockUsers.js";
 import { startQueueSync } from "./utils/operationQueue.js";
 import { appendAuditLog } from "./utils/auditLog.js";
 import { isFirebaseProvider } from "./services/appMode.js";
+import { initializePerformanceMonitoring } from "./services/observability.js";
 
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000;
 const SESSION_LAST_ACTIVITY_KEY = "sessionLastActivityAt";
@@ -125,6 +126,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!isFirebaseEnabled) return;
+    initializePerformanceMonitoring();
+  }, [isFirebaseEnabled]);
+
+  useEffect(() => {
     if (!isFirebaseEnabled) return undefined;
     let unsubscribe;
     let isCancelled = false;
@@ -137,6 +143,13 @@ function App() {
           setIsAuthenticated(Boolean(user));
           setIsAuthReady(true);
           setRoleMissing(Boolean(user) && !user?.role);
+          if (user && !user.role) {
+            appendAuditLog("user_role_missing", {
+              user: user.email,
+              role: "sin-rol",
+              entityId: user.uid,
+            });
+          }
         });
       })
       .catch((error) => {
@@ -151,6 +164,31 @@ function App() {
       if (typeof unsubscribe === "function") unsubscribe();
     };
   }, [isFirebaseEnabled]);
+
+  useEffect(() => {
+    if (!isFirebaseEnabled || !isAuthenticated || !userRole) return undefined;
+    let cancelled = false;
+    const hydrate = () => {
+      import("./services/firebase/firestoreHydration.js")
+        .then(({ hydrateFirebaseData }) =>
+          hydrateFirebaseData({ user: currentUser, role: userRole }),
+        )
+        .catch((error) => {
+          if (cancelled) return;
+          appendAuditLog("firebase_hydration_failed", {
+            user: currentUser?.email,
+            role: userRole,
+            metadata: { error: error?.message || "Error desconocido" },
+          });
+        });
+    };
+    hydrate();
+    const intervalId = window.setInterval(hydrate, 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [currentUser, isAuthenticated, isFirebaseEnabled, userRole]);
 
   const handleLogout = useCallback(
     (reason = "manual") => {

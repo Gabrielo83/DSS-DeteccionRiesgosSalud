@@ -54,6 +54,14 @@ const syncFromIndexedDb = async () => {
 
 export const readAllPlans = () => readRawPlans();
 
+export const replaceAllPlans = (plans = {}) => {
+  if (!plans || typeof plans !== "object" || Array.isArray(plans)) {
+    persistPlans({});
+    return;
+  }
+  persistPlans(plans);
+};
+
 export const readEmployeePlan = (employeeKey) => {
   if (!employeeKey) return null;
   const plans = readRawPlans();

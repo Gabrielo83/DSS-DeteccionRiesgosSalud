@@ -73,6 +73,7 @@ export const mapValidationEntryToFirestore = (entry) => ({
           entry.certificateFileMeta.type ||
           entry.certificateFileMeta.contentType,
         rutaStorage: entry.certificateFileMeta.storagePath || "",
+        downloadUrl: entry.certificateFileMeta.downloadUrl || "",
       }
     : null,
   planAcciones: entry?.planActions || [],
@@ -112,6 +113,7 @@ export const mapHistoryRecordToFirestore = (record) => ({
         tipoContenido:
           record.documentMeta.type || record.documentMeta.contentType,
         rutaStorage: record.documentMeta.storagePath || "",
+        downloadUrl: record.documentMeta.downloadUrl || "",
       }
     : record?.document
       ? {
@@ -158,6 +160,7 @@ export const mapAbsenceFormToFirestore = ({
         tamano: certificateFileMeta.size,
         tipoContenido: certificateFileMeta.type || certificateFileMeta.contentType,
         rutaStorage: certificateFileMeta.storagePath || "",
+        downloadUrl: certificateFileMeta.downloadUrl || "",
       }
     : null,
   estado: status || "",

@@ -34,6 +34,10 @@ const persistDrafts = (drafts) => {
 
 export const readDrafts = () => readRawDrafts();
 
+export const replaceDrafts = (drafts = []) => {
+  persistDrafts(Array.isArray(drafts) ? drafts : []);
+};
+
 export const saveDraft = (draft) => {
   if (!draft) return;
   const drafts = readRawDrafts().filter(

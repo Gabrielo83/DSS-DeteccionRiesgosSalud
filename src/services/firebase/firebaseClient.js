@@ -48,3 +48,16 @@ export const getFirebaseServices = () => {
     storage: getStorage(app),
   };
 };
+
+export const getFirebaseAnalytics = async () => {
+  const app = getFirebaseApp();
+  const { getAnalytics, isSupported } = await import("firebase/analytics");
+  const supported = await isSupported();
+  return supported ? getAnalytics(app) : null;
+};
+
+export const getFirebasePerformance = async () => {
+  const app = getFirebaseApp();
+  const { getPerformance } = await import("firebase/performance");
+  return getPerformance(app);
+};

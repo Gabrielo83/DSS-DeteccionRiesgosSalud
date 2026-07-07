@@ -53,7 +53,7 @@ npm run dev -- --host
 El proyecto mantiene un unico codigo base con selector de proveedor:
 
 - `local`: usa `localStorage`, IndexedDB y cola local. Es el modo estable para defensa.
-- `firebase`: mantiene la continuidad local y sincroniza operaciones con Firestore.
+- `firebase`: mantiene la continuidad local, sincroniza operaciones con Firestore, sube adjuntos a Storage e hidrata las pantallas desde Firestore segun permisos.
 
 Para modo local:
 
@@ -78,6 +78,20 @@ npm run dev:firebase -- --host
 ```
 
 Las credenciales reales no deben subirse al repositorio.
+
+### Reglas Firebase
+
+El repositorio incluye `firestore.rules`, `storage.rules` y `firebase.json`.
+
+Para desplegarlas desde Firebase CLI:
+
+```bash
+firebase deploy --only firestore:rules,storage
+```
+
+Las reglas de Storage limitan certificados a PDF/JPG/PNG de hasta 5 MB en
+`certificados/{reference}/{archivo}`. La validacion del frontend mantiene el
+mismo limite para evitar intentos invalidos antes de sincronizar.
 
 ## Scripts utiles
 
@@ -134,11 +148,11 @@ npm run build:firebase
 
 ## Proximos pasos
 
-- Completar autenticacion Firebase con roles reales por usuario.
-- Persistir certificados, legajos, borradores, auditoria y planes en Firestore.
-- Verificar adjuntos clinicos en Firebase Storage y consolidar reglas de acceso.
+- Completar semillas remotas de empleados/patologias si se desea operar sin datos locales iniciales.
+- Revisar eventos en Firebase Analytics, Performance y la coleccion `auditoria`.
+- Ajustar reglas productivas finas si se agregan claims custom por rol.
 - Mantener IndexedDB como respaldo offline-first.
-- Mover reglas sensibles y alertas criticas a Cloud Functions.
+- Mover reglas sensibles y alertas criticas a Cloud Functions como evolucion backend.
 
 Si necesitas regenerar datos controlados para presentacion, ejecuta
 `window.runDemoSeed()` en la consola del navegador.

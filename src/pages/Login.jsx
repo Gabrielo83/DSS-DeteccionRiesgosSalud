@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 import { MOCK_USERS } from "../data/mockUsers.js";
 import { isFirebaseProvider } from "../services/appMode.js";
+import { appendAuditLog } from "../utils/auditLog.js";
 
 function Login({
   isDark,
@@ -63,6 +64,10 @@ function Login({
         .then(({ signInWithEmail }) => signInWithEmail(email, password))
         .then(() => {
           setError("");
+          appendAuditLog("login_success", {
+            user: email,
+            role: "firebase-pendiente",
+          });
         })
         .catch((authError) => {
           const message =
@@ -70,6 +75,12 @@ function Login({
               ? "Credenciales invalidas."
               : "No se pudo iniciar sesion. Verifica tus datos.";
           setError(message);
+          appendAuditLog("login_failure", {
+            user: email,
+            metadata: {
+              code: authError?.code || "firebase-auth-error",
+            },
+          });
         })
         .finally(() => {
           setIsSubmitting(false);
@@ -85,6 +96,10 @@ function Login({
 
     if (!matchedUser) {
       setError("Credenciales invalidas. Verifica tus datos de acceso.");
+      appendAuditLog("login_failure", {
+        user: email,
+        metadata: { mode: "local" },
+      });
       return;
     }
 

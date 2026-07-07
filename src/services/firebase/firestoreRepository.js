@@ -5,6 +5,14 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { getFirebaseServices } from "./firebaseClient.js";
+import {
+  mapAbsenceFormToFirestore,
+  mapDraftPayloadToFirestore,
+  mapHistoryRecordToFirestore,
+  mapPlanPreventivoToFirestore,
+  mapValidationEntryToFirestore,
+} from "../../utils/firestoreMappings.js";
+import { appendAuditLog } from "../../utils/auditLog.js";
 
 const stripUndefined = (value) => {
   if (Array.isArray(value)) {
@@ -60,14 +68,34 @@ const uploadCertificateFile = async (storage, reference, certificate) => {
   const safeName = sanitizeFileName(fileMeta.name);
   const storagePath = `certificados/${reference}/${Date.now()}-${safeName}`;
   const storageReference = ref(storage, storagePath);
-  await uploadBytes(storageReference, blob, {
-    contentType: fileMeta.type || blob.type || "application/octet-stream",
-    customMetadata: {
-      reference,
-      originalName: fileMeta.name || safeName,
-    },
-  });
-  const downloadUrl = await getDownloadURL(storageReference);
+  let downloadUrl = "";
+  try {
+    await uploadBytes(storageReference, blob, {
+      contentType: fileMeta.type || blob.type || "application/octet-stream",
+      customMetadata: {
+        reference,
+        originalName: fileMeta.name || safeName,
+      },
+    });
+    downloadUrl = await getDownloadURL(storageReference);
+    appendAuditLog("certificate_upload_success", {
+      entityId: reference,
+      metadata: {
+        storagePath,
+        contentType: fileMeta.type || blob.type || "",
+        size: fileMeta.size || "",
+      },
+    });
+  } catch (error) {
+    appendAuditLog("certificate_upload_failed", {
+      entityId: reference,
+      metadata: {
+        storagePath,
+        error: error?.message || "No se pudo subir el certificado.",
+      },
+    });
+    throw error;
+  }
 
   return {
     ...certificate,
@@ -123,9 +151,9 @@ const writeDraft = async (db, operation) => {
   const draft = operation.payload?.payload || operation.payload || {};
   const draftId = draft.draftId || operation.payload?.draftId || operation.id;
   await setDoc(
-    doc(db, "drafts", draftId),
+    doc(db, "borradores", draftId),
     stripUndefined(stripTransientFileData({
-      ...draft,
+      ...mapDraftPayloadToFirestore(draft),
       sourceOperationId: operation.id,
       updatedAt: serverTimestamp(),
     })),
@@ -141,10 +169,42 @@ const writeCertificate = async (db, operation) => {
     throw new Error("No se pudo sincronizar certificado sin referencia.");
   }
   await setDoc(
-    doc(db, "certificates", reference),
+    doc(db, "validaciones_medicas", reference),
     stripUndefined(stripTransientFileData({
-      ...certificate,
+      ...mapValidationEntryToFirestore(certificate),
       reference,
+      sourceOperationId: operation.id,
+      updatedAt: serverTimestamp(),
+    })),
+    { merge: true },
+  );
+  await setDoc(
+    doc(db, "ausencias", reference),
+    stripUndefined(stripTransientFileData({
+      ...mapAbsenceFormToFirestore({
+        formValues: {
+          absenceId: reference,
+          employeeId: certificate.employeeId,
+          employeeName: certificate.employee,
+          sector: certificate.sector,
+          position: certificate.position,
+          absenceType: certificate.absenceType,
+          detailedReason: certificate.detailedReason,
+          pathologyCategory: certificate.pathologyCategory,
+          cieCode: certificate.cieCode,
+          additionalNotes: certificate.notes,
+          startDate: certificate.startDate,
+          endDate: certificate.endDate,
+        },
+        absenceDays: certificate.absenceDays,
+        certificateInstitution: certificate.institution,
+        certificateFileMeta: certificate.certificateFileMeta,
+        certificateReference: reference,
+        requiresApproval: "si",
+        status: "enviado",
+        createdBy: operation.user,
+      }),
+      absenceId: reference,
       sourceOperationId: operation.id,
       updatedAt: serverTimestamp(),
     })),
@@ -157,16 +217,67 @@ const writeCertificateDecision = async (db, operation) => {
   if (!reference) {
     throw new Error("No se pudo sincronizar decision sin referencia.");
   }
+  const validationEntry = operation.payload?.validationEntry;
+  const historyRecord = operation.payload?.historyRecord;
+  const decisionPayload = Object.fromEntries(
+    Object.entries(operation.payload || {}).filter(
+      ([key]) => !["validationEntry", "historyRecord"].includes(key),
+    ),
+  );
   await setDoc(
-    doc(db, "certificateDecisions", reference),
+    doc(db, "validaciones_medicas", reference),
     stripUndefined(stripTransientFileData({
-      ...operation.payload,
+      ...(validationEntry ? mapValidationEntryToFirestore(validationEntry) : {}),
+      ...decisionPayload,
       reference,
       sourceOperationId: operation.id,
-      decidedAt: serverTimestamp(),
+      revisadoEn: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     })),
     { merge: true },
   );
+  if (historyRecord) {
+    await setDoc(
+      doc(db, "historial_medico", reference),
+      stripUndefined(stripTransientFileData({
+        ...mapHistoryRecordToFirestore(historyRecord),
+        historyId: reference,
+        reference,
+        sourceOperationId: operation.id,
+        updatedAt: serverTimestamp(),
+      })),
+      { merge: true },
+    );
+  }
+  if (
+    validationEntry?.employeeId &&
+    (validationEntry.planActions?.length ||
+      validationEntry.planFollowUps?.length ||
+      validationEntry.planRecommendations?.length)
+  ) {
+    await setDoc(
+      doc(db, "planes_preventivos", validationEntry.employeeId),
+      stripUndefined({
+        ...mapPlanPreventivoToFirestore(
+          {
+            actions: validationEntry.planActions || [],
+            followUps: validationEntry.planFollowUps || [],
+            recommendations: validationEntry.planRecommendations || [],
+          },
+          validationEntry.employeeId,
+          operation.user,
+          {
+            nombreCompleto: validationEntry.employee,
+            sector: validationEntry.sector,
+            puesto: validationEntry.position,
+          },
+        ),
+        sourceOperationId: operation.id,
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true },
+    );
+  }
 };
 
 export const syncOperationToFirestore = async (operation) => {

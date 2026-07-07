@@ -615,6 +615,8 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         reviewer: reviewerName,
         notes: trimmedNotes,
         risk: entryRisk,
+        validationEntry: updatedEntry,
+        historyRecord,
       },
       {
         user: auth?.user?.email || reviewerName,

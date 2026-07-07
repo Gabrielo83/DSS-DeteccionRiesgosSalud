@@ -60,6 +60,11 @@ export const upsertValidationEntry = (entry) => {
   persistQueue([...queue, entry]);
 };
 
+export const replaceValidationQueue = (entries = []) => {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  persistQueue(safeEntries);
+};
+
 export const removeValidationEntry = (reference) => {
   if (!isBrowser() || !reference) return;
   const queue = readValidationQueue();

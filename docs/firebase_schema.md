@@ -1,4 +1,8 @@
-# Esquema Firestore (Propuesta)
+# Esquema Firestore
+
+Este esquema es la referencia funcional para el modo Firebase. El sistema
+mantiene persistencia local como respaldo operativo, pero en modo Firebase
+sincroniza e hidrata datos contra estas colecciones.
 
 ## Colecciones y documentos
 
@@ -34,6 +38,7 @@
   - tamano
   - tipoContenido
   - rutaStorage
+  - downloadUrl
 - estado (borrador | enviado)
 - creadoEn, actualizadoEn
 - creadoPor (userId/email)
@@ -60,6 +65,7 @@
   - tamano
   - tipoContenido
   - rutaStorage
+  - downloadUrl
 - planAcciones[]
 - planSeguimientos[]
 - planRecomendaciones[]
@@ -87,6 +93,7 @@
   - tamano
   - tipoContenido
   - rutaStorage
+  - downloadUrl
 - planAcciones[]
 - planSeguimientos[]
 - planRecomendaciones[]
@@ -137,10 +144,33 @@
 - nombreVisible
 - rol
 
+10) `auditoria/{auditId}`
+- id
+- eventType
+- timestamp
+- user
+- role
+- entityId
+- metadata
+- creadoEn
+
+11) `operations/{operationId}`
+- id
+- type
+- payload sin `previewUrl` base64
+- user
+- entityId
+- retryCount
+- localCreatedAt
+- syncedAt
+
 Notas
 - Usar reference como docId en validaciones_medicas y historial_medico para evitar duplicados.
 - Storage de certificados: `certificados/{reference}/{timestamp}-{filename}`.
 - Firestore no debe persistir `previewUrl` local/base64; debe guardar `storagePath` y `downloadUrl`.
+- `operations` es bitacora tecnica de sincronizacion; el dato funcional vive en colecciones de dominio.
+- Las reglas de Storage aceptan solo PDF/JPG/PNG de hasta 5 MB.
+- Las reglas de Firestore limitan datos clinicos a `superAdmin`, `medico` y `administrativoSalud`.
 
 ## Diagrama (Mermaid)
 

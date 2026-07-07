@@ -4,6 +4,7 @@ import {
 } from "./storageKeys.js";
 import { readEntity, saveEntity } from "./indexedDbClient.js";
 import { syncOperation } from "../services/syncHandler.js";
+import { appendAuditLog } from "./auditLog.js";
 
 const IDB_STORE = "queue";
 const IDB_KEY = "queue";
@@ -146,6 +147,14 @@ export const processQueue = async (handler = defaultHandler) => {
       lastAttemptAt: attemptAt,
       retryCount: (op.retryCount || 0) + 1,
       lastError: result?.error || result?.reason || "sync failed",
+    });
+    appendAuditLog("sync_failed", {
+      user: op.user,
+      entityId: op.entityId,
+      metadata: {
+        operationType: op.type,
+        error: result?.error || result?.reason || "sync failed",
+      },
     });
   }
 

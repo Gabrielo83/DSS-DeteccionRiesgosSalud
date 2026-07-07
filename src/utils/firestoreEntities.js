@@ -54,6 +54,8 @@ export const savePlanPreventivo = (employeeId, data) =>
 export const getPlanPreventivo = (employeeId) =>
   getDocById(COLLECTIONS.PLANES, employeeId);
 
+export const listPlanesPreventivos = () => listCollection(COLLECTIONS.PLANES);
+
 export const savePatologia = (pathologyId, data) =>
   upsertDocById(COLLECTIONS.PATOLOGIAS, pathologyId, data, {
     includeCreated: true,
