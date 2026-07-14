@@ -1,4 +1,4 @@
-import { riskProfiles, defaultRiskScore } from "../data/riskProfiles.js";
+import { readRiskConfig } from "./riskConfigStorage.js";
 
 const baseDescriptors = {
   Alta: "Alto Riesgo 7.0 - 10.0",
@@ -13,16 +13,17 @@ const baseBadgeTone = {
 };
 
 export const mapScoreToRisk = (value) => {
+  const { parameters } = readRiskConfig();
   const numeric = Number(value);
   const normalized = Number(
     Number.isFinite(numeric)
       ? Math.min(10, Math.max(0, numeric)).toFixed(1)
-      : defaultRiskScore.toFixed(1),
+      : parameters.defaultRiskScore.toFixed(1),
   );
   const level =
-    normalized >= 7
+    normalized >= parameters.highRiskThreshold
       ? "Alta"
-      : normalized >= 5
+      : normalized >= parameters.mediumRiskThreshold
         ? "Media"
         : "Baja";
   return {
@@ -40,31 +41,32 @@ export const calculateRiskScore = ({
   durationDays = 0,
   occurrenceCount = 1,
 } = {}) => {
+  const { parameters, profiles } = readRiskConfig();
   const text = `${absenceType} ${detailedReason} ${pathologyCategory}`.toLowerCase();
   const profile =
-    riskProfiles.find((item) =>
+    profiles.find((item) =>
       item.keywords.some((keyword) => text.includes(keyword.toLowerCase())),
     ) || null;
-  let score = profile?.score ?? defaultRiskScore;
+  let score = profile?.score ?? parameters.defaultRiskScore;
 
   if (absenceType.toLowerCase().includes("accidente")) {
-    score = Math.min(10, score + 0.5);
+    score = Math.min(10, score + parameters.accidentBonus);
   }
   const safeDuration = Number(durationDays);
   if (Number.isFinite(safeDuration)) {
-    if (safeDuration >= 14) {
-      score += 0.8;
-    } else if (safeDuration >= 7) {
-      score += 0.4;
+    if (safeDuration >= parameters.highDurationDays) {
+      score += parameters.highDurationBonus;
+    } else if (safeDuration >= parameters.mediumDurationDays) {
+      score += parameters.mediumDurationBonus;
     }
   }
 
   const safeOccurrences = Number(occurrenceCount);
   if (Number.isFinite(safeOccurrences)) {
-    if (safeOccurrences >= 3) {
-      score += 1;
-    } else if (safeOccurrences === 2) {
-      score += 0.5;
+    if (safeOccurrences >= parameters.highOccurrenceCount) {
+      score += parameters.highOccurrenceBonus;
+    } else if (safeOccurrences >= parameters.mediumOccurrenceCount) {
+      score += parameters.mediumOccurrenceBonus;
     }
   }
 

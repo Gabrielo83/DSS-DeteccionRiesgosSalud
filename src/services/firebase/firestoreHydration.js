@@ -2,13 +2,16 @@ import {
   listBorradores,
   listEmpleados,
   listHistorial,
+  listPatologias,
   listPlanesPreventivos,
+  getParametrosRiesgo,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
 import { replaceDrafts } from "../../utils/draftStorage.js";
 import { replaceEmployees } from "../../utils/employeeStorage.js";
 import { replaceAllHistory } from "../../utils/historyStorage.js";
 import { replaceAllPlans } from "../../utils/planStorage.js";
+import { replaceRiskConfig } from "../../utils/riskConfigStorage.js";
 import { replaceValidationQueue } from "../../utils/validationStorage.js";
 import { appendAuditLog } from "../../utils/auditLog.js";
 
@@ -178,9 +181,24 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const canReadClinical = clinicalRoles.includes(role);
   const detail = { user: user?.email, role };
 
-  const [empleados, validaciones, historial, borradores, planes] =
+  const [
+    empleados,
+    patologias,
+    parametrosRiesgo,
+    validaciones,
+    historial,
+    borradores,
+    planes,
+  ] =
     await Promise.all([
       fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
+      fetchOrFallback(listPatologias, [], "firebase_hydration_failed", detail),
+      fetchOrFallback(
+        () => getParametrosRiesgo("global"),
+        null,
+        "firebase_hydration_failed",
+        detail,
+      ),
       canReadClinical
         ? fetchOrFallback(
             listValidaciones,
@@ -204,6 +222,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     ]);
 
   replaceEmployees(empleados.map(normalizeEmployee));
+  replaceRiskConfig({
+    parameters: parametrosRiesgo || {},
+    pathologies: patologias,
+  });
 
   if (canReadClinical) {
     replaceValidationQueue(validaciones.map(normalizeValidation));
@@ -238,6 +260,8 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     role,
     metadata: {
       empleados: empleados.length,
+      patologias: patologias.length,
+      parametrosRiesgo: parametrosRiesgo ? 1 : 0,
       validaciones: validaciones.length,
       historial: historial.length,
       borradores: borradores.length,
@@ -247,6 +271,8 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
 
   return {
     empleados: empleados.length,
+    patologias: patologias.length,
+    parametrosRiesgo: parametrosRiesgo ? 1 : 0,
     validaciones: validaciones.length,
     historial: historial.length,
     borradores: borradores.length,

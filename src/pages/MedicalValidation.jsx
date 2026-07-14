@@ -13,6 +13,7 @@ import {
 import {
   EMPLOYEES_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
+  RISK_CONFIG_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { calculateRiskScore, mapScoreToRisk } from "../utils/riskUtils.js";
 import { readEmployeePlan, saveEmployeePlan } from "../utils/planStorage.js";
@@ -247,6 +248,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       setTableUpdatedAt(getCurrentTimestamp());
     };
     window.addEventListener(EMPLOYEES_UPDATED_EVENT, handleUpdate);
+    window.addEventListener(RISK_CONFIG_UPDATED_EVENT, handleUpdate);
     window.addEventListener(
       MEDICAL_VALIDATIONS_UPDATED_EVENT,
       handleUpdate
@@ -254,6 +256,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     window.addEventListener("storage", handleUpdate);
     return () => {
       window.removeEventListener(EMPLOYEES_UPDATED_EVENT, handleUpdate);
+      window.removeEventListener(RISK_CONFIG_UPDATED_EVENT, handleUpdate);
       window.removeEventListener(
         MEDICAL_VALIDATIONS_UPDATED_EVENT,
         handleUpdate

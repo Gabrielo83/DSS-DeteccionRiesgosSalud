@@ -15,6 +15,7 @@ import {
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
   EMPLOYEES_UPDATED_EVENT,
   PREVENTIVE_PLANS_UPDATED_EVENT,
+  RISK_CONFIG_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { readAllPlans } from "../utils/planStorage.js";
 import {
@@ -808,11 +809,13 @@ function Dashboard({ isDark, onToggleTheme }) {
     };
     refreshAll();
     window.addEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
+    window.addEventListener(RISK_CONFIG_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshAll);
     window.addEventListener("storage", refreshAll);
     return () => {
       window.removeEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
+      window.removeEventListener(RISK_CONFIG_UPDATED_EVENT, refreshAll);
       window.removeEventListener(
         MEDICAL_VALIDATIONS_UPDATED_EVENT,
         refreshAll,
