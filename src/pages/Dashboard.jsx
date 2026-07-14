@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader.jsx";
-import mockEmployees from "../data/mockEmployees.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
 import { readAllHistory } from "../utils/historyStorage.js";
+import { readEmployees } from "../utils/employeeStorage.js";
 import calculateRiskScore, { mapScoreToRisk } from "../utils/riskUtils.js";
 import {
   formatLocalDate,
@@ -13,6 +13,7 @@ import {
 import {
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
+  EMPLOYEES_UPDATED_EVENT,
   PREVENTIVE_PLANS_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { readAllPlans } from "../utils/planStorage.js";
@@ -31,12 +32,15 @@ const pathologyCategoryMap = new Map(
   pathologyCategories.map((item) => [item.value, item.label]),
 );
 
-const employeeIndexById = new Map();
-const employeeIndexByName = new Map();
-mockEmployees.forEach((employee) => {
-  employeeIndexById.set(employee.employeeId, employee);
-  employeeIndexByName.set(employee.fullName.toLowerCase(), employee);
-});
+const buildEmployeeIndexes = (employees = []) => {
+  const byId = new Map();
+  const byName = new Map();
+  employees.forEach((employee) => {
+    if (employee.employeeId) byId.set(employee.employeeId, employee);
+    if (employee.fullName) byName.set(employee.fullName.toLowerCase(), employee);
+  });
+  return { byId, byName };
+};
 
 const normalizeText = (value = "") =>
   value
@@ -194,6 +198,9 @@ const legendLevels = [
 */
 
 function Dashboard({ isDark, onToggleTheme }) {
+  const [employees, setEmployees] = useState(() =>
+    typeof window === "undefined" ? [] : readEmployees(),
+  );
   const [validationQueue, setValidationQueue] = useState(() =>
     typeof window === "undefined" ? [] : readValidationQueue(),
   );
@@ -226,6 +233,10 @@ function Dashboard({ isDark, onToggleTheme }) {
   });
   const [planStore, setPlanStore] = useState(() =>
     typeof window === "undefined" ? {} : readAllPlans(),
+  );
+  const { byId: employeeIndexById, byName: employeeIndexByName } = useMemo(
+    () => buildEmployeeIndexes(employees),
+    [employees],
   );
   const periodRange = useMemo(() => {
     const start = new Date(periodYear, periodMonth, 1);
@@ -263,11 +274,11 @@ function Dashboard({ isDark, onToggleTheme }) {
       });
     });
     return entries;
-  }, [historySnapshot]);
+  }, [employeeIndexById, historySnapshot]);
 
   const headcountActive = useMemo(() => {
     const { startMs, endMs } = periodRange;
-    return mockEmployees.filter((emp) => {
+    return employees.filter((emp) => {
       if (emp.active === false) return false;
       const hire = Date.parse(emp.hireDate);
       const termination = emp.terminationDate ? Date.parse(emp.terminationDate) : null;
@@ -276,12 +287,12 @@ function Dashboard({ isDark, onToggleTheme }) {
       const notTerminated = !termination || termination >= startMs;
       return started && notTerminated;
     }).length;
-  }, [periodRange]);
+  }, [employees, periodRange]);
 
   const headcountBySector = useMemo(() => {
     const { startMs, endMs } = periodRange;
     const map = new Map();
-    mockEmployees.forEach((emp) => {
+    employees.forEach((emp) => {
       if (emp.active === false) return;
       const hire = Date.parse(emp.hireDate);
       const termination = emp.terminationDate
@@ -295,7 +306,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       map.set(sector, (map.get(sector) || 0) + 1);
     });
     return map;
-  }, [periodRange]);
+  }, [employees, periodRange]);
 
   const filteredValidated = useMemo(() => {
     const { startMs, endMs } = periodRange;
@@ -321,7 +332,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       map.get(sector).push(entry);
     });
     return map;
-  }, [filteredValidated]);
+  }, [employeeIndexById, filteredValidated]);
 
   const alertsCount = useMemo(() => {
     return validationQueue.filter((entry) => {
@@ -346,7 +357,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       map.set(sector, (map.get(sector) || 0) + 1);
     });
     return map;
-  }, [validationQueue]);
+  }, [employeeIndexById, validationQueue]);
 
   const riskAverage = useMemo(() => {
     if (!filteredValidated.length) return null;
@@ -540,7 +551,14 @@ function Dashboard({ isDark, onToggleTheme }) {
         pendingCount: queueItems.length,
       });
     },
-    [filteredValidated, validationQueue, headcountBySector, allHistoryEntries, periodRange],
+    [
+      employeeIndexById,
+      filteredValidated,
+      validationQueue,
+      headcountBySector,
+      allHistoryEntries,
+      periodRange,
+    ],
   );
 
   const closeHeatmapModal = useCallback(
@@ -783,15 +801,18 @@ function Dashboard({ isDark, onToggleTheme }) {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshAll = () => {
+      setEmployees(readEmployees());
       setValidationQueue(readValidationQueue());
       setHistorySnapshot(readAllHistory());
       setLastRefresh(new Date());
     };
     refreshAll();
+    window.addEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshAll);
     window.addEventListener("storage", refreshAll);
     return () => {
+      window.removeEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
       window.removeEventListener(
         MEDICAL_VALIDATIONS_UPDATED_EVENT,
         refreshAll,
@@ -1018,7 +1039,13 @@ function Dashboard({ isDark, onToggleTheme }) {
     return candidates.sort(
       (a, b) => b.scoreValue - a.scoreValue || b.updatedAt - a.updatedAt,
     );
-  }, [validationQueue, historySnapshot, planStore]);
+  }, [
+    employeeIndexById,
+    employeeIndexByName,
+    validationQueue,
+    historySnapshot,
+    planStore,
+  ]);
 
   const employeesToDisplay = dynamicEmployees.map((employee) => ({
     ...employee,

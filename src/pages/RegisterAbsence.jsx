@@ -2,8 +2,8 @@ import { useState, useEffect, useContext, useMemo } from "react";
 import AppHeader from "../components/AppHeader.jsx";
 import DropdownSelect from "../components/DropdownSelect.jsx";
 import DatePicker from "../components/DatePicker.jsx";
-import { mockEmployees } from "../data/mockEmployees.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
+import { readEmployees } from "../utils/employeeStorage.js";
 import {
   readValidationQueue,
   upsertValidationEntry,
@@ -15,6 +15,7 @@ import {
 } from "../utils/draftStorage.js";
 import {
   ABSENCE_DRAFTS_UPDATED_EVENT,
+  EMPLOYEES_UPDATED_EVENT,
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
@@ -26,7 +27,6 @@ import { readEmployeeHistory } from "../utils/historyStorage.js";
 import { appendAuditLog } from "../utils/auditLog.js";
 import AuthContext from "../context/AuthContext.jsx";
 
-const employees = mockEmployees;
 const sectionIcons = {
   employee: (
     <svg
@@ -271,6 +271,9 @@ const createInitialFormValues = () => ({
 function RegisterAbsence({ isDark, onToggleTheme }) {
   const auth = useContext(AuthContext);
   const currentUserName = auth?.user?.fullName || "Usuario no identificado";
+  const [employees, setEmployees] = useState(() =>
+    typeof window === "undefined" ? [] : readEmployees(),
+  );
   const [formValues, setFormValues] = useState(createInitialFormValues);
   const [absenceDays, setAbsenceDays] = useState(null);
   const [certificateInstitution, setCertificateInstitution] = useState("");
@@ -387,6 +390,20 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
     certificateReference,
     historyRefreshKey,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const syncEmployees = () => {
+      setEmployees(readEmployees());
+    };
+    syncEmployees();
+    window.addEventListener(EMPLOYEES_UPDATED_EVENT, syncEmployees);
+    window.addEventListener("storage", syncEmployees);
+    return () => {
+      window.removeEventListener(EMPLOYEES_UPDATED_EVENT, syncEmployees);
+      window.removeEventListener("storage", syncEmployees);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;

@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader.jsx";
 import DropdownSelect from "../components/DropdownSelect.jsx";
-import mockEmployees from "../data/mockEmployees.js";
+import { readEmployees } from "../utils/employeeStorage.js";
 import { readValidationQueue, upsertValidationEntry } from "../utils/validationStorage.js";
 import {
   readEmployeeHistory,
@@ -10,7 +10,10 @@ import {
   importHistoryFromCSV,
   exportHistoryAsJSON,
 } from "../utils/historyStorage.js";
-import { MEDICAL_VALIDATIONS_UPDATED_EVENT } from "../utils/storageKeys.js";
+import {
+  EMPLOYEES_UPDATED_EVENT,
+  MEDICAL_VALIDATIONS_UPDATED_EVENT,
+} from "../utils/storageKeys.js";
 import { calculateRiskScore, mapScoreToRisk } from "../utils/riskUtils.js";
 import { readEmployeePlan, saveEmployeePlan } from "../utils/planStorage.js";
 import {
@@ -208,6 +211,9 @@ function MedicalValidation({ isDark, onToggleTheme }) {
   const [dynamicValidations, setDynamicValidations] = useState(() =>
     readValidationQueue()
   );
+  const [employees, setEmployees] = useState(() =>
+    typeof window === "undefined" ? [] : readEmployees(),
+  );
   const [staticValidations, setStaticValidations] = useState(baseValidations);
   const [sortConfig, setSortConfig] = useState({
     key: "receivedTimestamp",
@@ -237,14 +243,17 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     if (typeof window === "undefined") return undefined;
     const handleUpdate = () => {
       setDynamicValidations(readValidationQueue());
+      setEmployees(readEmployees());
       setTableUpdatedAt(getCurrentTimestamp());
     };
+    window.addEventListener(EMPLOYEES_UPDATED_EVENT, handleUpdate);
     window.addEventListener(
       MEDICAL_VALIDATIONS_UPDATED_EVENT,
       handleUpdate
     );
     window.addEventListener("storage", handleUpdate);
     return () => {
+      window.removeEventListener(EMPLOYEES_UPDATED_EVENT, handleUpdate);
       window.removeEventListener(
         MEDICAL_VALIDATIONS_UPDATED_EVENT,
         handleUpdate
@@ -705,7 +714,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
   const openHistoryModal = (row) => {
     const resolvedId =
       row.employeeId ||
-      mockEmployees.find(
+      employees.find(
         (emp) => emp.fullName?.toLowerCase() === (row.employee || "").toLowerCase(),
       )?.employeeId ||
       row.employee;

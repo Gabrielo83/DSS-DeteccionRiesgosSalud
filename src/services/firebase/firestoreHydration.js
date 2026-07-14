@@ -1,10 +1,12 @@
 import {
   listBorradores,
+  listEmpleados,
   listHistorial,
   listPlanesPreventivos,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
 import { replaceDrafts } from "../../utils/draftStorage.js";
+import { replaceEmployees } from "../../utils/employeeStorage.js";
 import { replaceAllHistory } from "../../utils/historyStorage.js";
 import { replaceAllPlans } from "../../utils/planStorage.js";
 import { replaceValidationQueue } from "../../utils/validationStorage.js";
@@ -141,6 +143,22 @@ const normalizePlan = (doc = {}) => ({
   recommendations: doc.recomendaciones || [],
 });
 
+const normalizeEmployee = (doc = {}) => ({
+  employeeId: doc.employeeId || doc.id || "",
+  medicalRecordId: doc.legajoMedico || doc.medicalRecordId || "",
+  fullName: doc.nombreCompleto || doc.fullName || "",
+  sector: doc.sector || "Sin sector",
+  position: doc.puesto || doc.position || "",
+  email: doc.email || "",
+  phone: doc.telefono || doc.phone || "",
+  bloodType: doc.tipoSangre || doc.bloodType || "",
+  seniority: doc.antiguedad || doc.seniority || "",
+  avatar: doc.avatar || "",
+  active: doc.activo ?? doc.active ?? true,
+  hireDate: toDateString(doc.fechaAlta || doc.hireDate),
+  terminationDate: toDateString(doc.fechaBaja || doc.terminationDate),
+});
+
 const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
   try {
     return await fetcher();
@@ -160,23 +178,32 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const canReadClinical = clinicalRoles.includes(role);
   const detail = { user: user?.email, role };
 
-  const [validaciones, historial, borradores, planes] = await Promise.all([
-    canReadClinical
-      ? fetchOrFallback(listValidaciones, [], "firebase_hydration_failed", detail)
-      : Promise.resolve([]),
-    canReadClinical
-      ? fetchOrFallback(listHistorial, [], "firebase_hydration_failed", detail)
-      : Promise.resolve([]),
-    fetchOrFallback(listBorradores, [], "firebase_hydration_failed", detail),
-    canReadClinical
-      ? fetchOrFallback(
-          listPlanesPreventivos,
-          [],
-          "firebase_hydration_failed",
-          detail,
-        )
-      : Promise.resolve([]),
-  ]);
+  const [empleados, validaciones, historial, borradores, planes] =
+    await Promise.all([
+      fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
+      canReadClinical
+        ? fetchOrFallback(
+            listValidaciones,
+            [],
+            "firebase_hydration_failed",
+            detail,
+          )
+        : Promise.resolve([]),
+      canReadClinical
+        ? fetchOrFallback(listHistorial, [], "firebase_hydration_failed", detail)
+        : Promise.resolve([]),
+      fetchOrFallback(listBorradores, [], "firebase_hydration_failed", detail),
+      canReadClinical
+        ? fetchOrFallback(
+            listPlanesPreventivos,
+            [],
+            "firebase_hydration_failed",
+            detail,
+          )
+        : Promise.resolve([]),
+    ]);
+
+  replaceEmployees(empleados.map(normalizeEmployee));
 
   if (canReadClinical) {
     replaceValidationQueue(validaciones.map(normalizeValidation));
@@ -210,6 +237,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     user: user?.email,
     role,
     metadata: {
+      empleados: empleados.length,
       validaciones: validaciones.length,
       historial: historial.length,
       borradores: borradores.length,
@@ -218,6 +246,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   });
 
   return {
+    empleados: empleados.length,
     validaciones: validaciones.length,
     historial: historial.length,
     borradores: borradores.length,
