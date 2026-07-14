@@ -9,6 +9,8 @@
     "build": "vite build",
     "build:firebase": "vite build --mode firebase",
     "deploy:firebase:rules": "firebase deploy --only firestore:rules,storage",
+    "deploy:firebase:functions": "firebase deploy --only functions",
+    "lint:functions": "npm --prefix functions run lint",
     "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
