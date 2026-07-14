@@ -8,6 +8,7 @@
     "dev:firebase": "vite --mode firebase",
     "build": "vite build",
     "build:firebase": "vite build --mode firebase",
+    "deploy:firebase:rules": "firebase deploy --only firestore:rules,storage",
     "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
