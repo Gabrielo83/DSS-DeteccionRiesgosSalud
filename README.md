@@ -156,3 +156,10 @@ npm run build:firebase
 
 Si necesitas regenerar datos controlados para presentacion, ejecuta
 `window.runDemoSeed()` en la consola del navegador.
+
+Para cargar la nomina controlada de 80 empleados en Firestore, inicia sesion en
+modo Firebase con un rol autorizado (`superAdmin` o `respRRHH`) y ejecuta:
+
+```js
+await window.seedFirebaseEmployees()
+```

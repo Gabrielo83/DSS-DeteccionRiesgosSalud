@@ -189,9 +189,15 @@ export const mapEmpleadoToFirestore = (employee) => ({
   sector: employee?.sector || "",
   puesto: employee?.position || employee?.puesto || "",
   legajoMedico: employee?.medicalRecordId || employee?.legajoMedico || "",
+  email: employee?.email || "",
+  telefono: employee?.phone || employee?.telefono || "",
+  tipoSangre: employee?.bloodType || employee?.tipoSangre || "",
+  antiguedad: employee?.seniority || employee?.antiguedad || "",
+  avatar: employee?.avatar || "",
   activo: employee?.active ?? employee?.activo ?? true,
-  fechaAlta: employee?.startDate || employee?.fechaAlta || "",
-  fechaBaja: employee?.endDate || employee?.fechaBaja || null,
+  fechaAlta: employee?.hireDate || employee?.startDate || employee?.fechaAlta || "",
+  fechaBaja:
+    employee?.terminationDate || employee?.endDate || employee?.fechaBaja || null,
 });
 
 export const mapUsuarioToFirestore = (user) => ({
