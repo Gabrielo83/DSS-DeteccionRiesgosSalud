@@ -91,7 +91,7 @@ export const mapHistoryRecordToFirestore = (record) => ({
   sector: record?.sector || "",
   puesto: record?.position || record?.puesto || "",
   tipo: record?.title || record?.absenceType || "",
-  tipoCertificado: record?.certificateType || "",
+  tipoCertificado: record?.certificateType || record?.title || "",
   diagnostico: record?.detailedReason || "",
   fechaInicio: record?.startDate || "",
   fechaFin: record?.endDate || "",
@@ -102,7 +102,12 @@ export const mapHistoryRecordToFirestore = (record) => ({
   riesgoNivel: record?.riskLevel || "",
   estadoFinal: normalizeEstado(record?.status || ""),
   aprobadoPor: record?.reviewer || record?.approvedBy || "",
-  aprobadoEn: record?.approvedAt || record?.reviewedAt || null,
+  aprobadoEn:
+    record?.approvedAt ||
+    record?.reviewedAt ||
+    record?.validatedAt ||
+    record?.lastDecisionAt ||
+    null,
   notasMedicas: record?.notes || "",
   grupoPatologia: record?.pathologyCategory || "",
   cie10: record?.cieCode || "",

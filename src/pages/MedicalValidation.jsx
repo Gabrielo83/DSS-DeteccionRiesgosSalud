@@ -595,12 +595,15 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     const historyRecord = {
       id: updatedEntry.reference || `${updatedEntry.employeeId}-${Date.now()}`,
       reference: updatedEntry.reference,
+      employeeId: updatedEntry.employeeId || selectedCertificate.employeeId || "",
       title:
         updatedEntry.certificateType ||
         updatedEntry.absenceType ||
         "Certificado medico cargado en sistema",
+      certificateType: updatedEntry.certificateType || selectedCertificate.certificateType || "",
       employee: updatedEntry.employee || selectedCertificate.employee,
       sector: updatedEntry.sector || selectedCertificate.sector,
+      position: updatedEntry.position || selectedCertificate.position || "",
       issued: updatedEntry.issueDate || updatedEntry.startDate || timestamp,
       submittedAt: updatedEntry.submitted || selectedCertificate.submitted || "",
       presentedAt:
@@ -632,6 +635,9 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       riskScore: entryRisk.score,
       riskLevel: entryRisk.level,
       riskDescriptor: entryRisk.descriptor,
+      pathologyCategory:
+        updatedEntry.pathologyCategory || selectedCertificate.pathologyCategory || "",
+      cieCode: updatedEntry.cieCode || selectedCertificate.cieCode || "",
       planActions: updatedEntry.planActions || [],
       planFollowUps: updatedEntry.planFollowUps || [],
       planRecommendations: updatedEntry.planRecommendations || [],

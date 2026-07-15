@@ -901,7 +901,7 @@ const clearCertificateFile = () => {
       : `Carga realizada desde Registro de Ausencias por ${currentUserName} el ${submissionTimestamp}.`;
     const combinedNotes = [previousNotes, correctionNote, formValues.additionalNotes]
       .filter(Boolean)
-      .join(previousNotes ? " | " : "");
+      .join(" | ");
     const certificateMeta =
       certificateFile || activeRevisionEntry?.certificateFileMeta || null;
     const entry = {

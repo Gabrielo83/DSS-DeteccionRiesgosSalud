@@ -105,16 +105,30 @@ const riskChanged = (validation, riskAssessment) => {
 };
 
 const writeAudit = async (reference, validation, riskAssessment) => {
-  await db.collection("auditoria").add({
+  const auditRef = db.collection("auditoria").doc();
+  await auditRef.set({
+    id: auditRef.id,
+    eventType: "riesgo_recalculado_backend",
     evento: "riesgo_recalculado_backend",
+    entityId: reference,
     referencia: reference,
+    user: "cloud-functions",
+    role: "backend",
     employeeId: validation.employeeId || "",
     nombreCompleto: validation.nombreCompleto || "",
     origen: "cloud-functions",
     riesgoPuntaje: riskAssessment.score,
     riesgoNivel: riskAssessment.level,
     perfilDetectado: riskAssessment.matchedProfile || "",
+    metadata: {
+      employeeId: validation.employeeId || "",
+      nombreCompleto: validation.nombreCompleto || "",
+      riesgoPuntaje: riskAssessment.score,
+      riesgoNivel: riskAssessment.level,
+      perfilDetectado: riskAssessment.matchedProfile || "",
+    },
     creadoEn: FieldValue.serverTimestamp(),
+    timestamp: FieldValue.serverTimestamp(),
   });
 };
 
