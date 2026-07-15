@@ -1,4 +1,5 @@
 import {
+  deleteDoc,
   doc,
   serverTimestamp,
   setDoc,
@@ -161,6 +162,15 @@ const writeDraft = async (db, operation) => {
   );
 };
 
+const deleteDraft = async (db, operation) => {
+  const draftId =
+    operation.payload?.draftId || operation.entityId || operation.payload?.id;
+  if (!draftId) {
+    throw new Error("No se pudo eliminar borrador sin identificador.");
+  }
+  await deleteDoc(doc(db, "borradores", draftId));
+};
+
 const writeCertificate = async (db, operation) => {
   const certificate = operation.payload?.certificate || operation.payload || {};
   const reference =
@@ -291,6 +301,10 @@ export const syncOperationToFirestore = async (operation) => {
 
   if (preparedOperation.type === "saveDraft") {
     await writeDraft(db, preparedOperation);
+  }
+
+  if (preparedOperation.type === "deleteDraft") {
+    await deleteDraft(db, preparedOperation);
   }
 
   if (preparedOperation.type === "submitCertificate") {

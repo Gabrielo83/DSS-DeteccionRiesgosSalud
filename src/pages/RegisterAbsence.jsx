@@ -551,6 +551,15 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
     if (!draftId) return;
     removeDraft(draftId);
     setDrafts(readDrafts());
+    enqueueOperation(
+      "deleteDraft",
+      { draftId },
+      {
+        user: auth?.user?.email || currentUserName,
+        entityId: draftId,
+      },
+    );
+    processOperationQueue();
     if (activeDraftId === draftId) {
       resetForm();
     }
@@ -560,6 +569,17 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
       tone: "bg-rose-600 text-white",
     });
   };
+
+  const handleFullHistoryClick = (event) => {
+    if (!formValues.employeeId || typeof window === "undefined") return;
+    event.preventDefault();
+    const targetPath = `/legajos-medicos?employeeId=${encodeURIComponent(
+      formValues.employeeId,
+    )}`;
+    window.history.pushState({}, "", targetPath);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   const loadReviewEntry = (entry) => {
     if (!entry) return;
     const startDate = entry.startDate || entry.issueDate || "";
@@ -1034,6 +1054,15 @@ const clearCertificateFile = () => {
     if (draftIdToClear) {
       removeDraft(draftIdToClear);
       setDrafts(readDrafts());
+      enqueueOperation(
+        "deleteDraft",
+        { draftId: draftIdToClear },
+        {
+          user: auth?.user?.email || currentUserName,
+          entityId: draftIdToClear,
+        },
+      );
+      processOperationQueue();
     }
     resetForm();
     if (result?.reference) {
@@ -1308,6 +1337,7 @@ const clearCertificateFile = () => {
                   </p>
                   <a
                     href={`/legajos-medicos?employeeId=${encodeURIComponent(formValues.employeeId)}`}
+                    onClick={handleFullHistoryClick}
                     className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                   >
                     Ver historial completo
