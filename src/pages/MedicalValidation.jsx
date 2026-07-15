@@ -881,7 +881,9 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     modalDocumentMeta?.size || "Sin tamaño registrado";
   const modalDocumentUploaded =
     modalDocumentMeta?.uploadedAt ||
-    selectedCertificate?.submitted ||
+    formatDateValue(selectedCertificate?.submitted) ||
+    formatDateValue(selectedCertificate?.issueDate) ||
+    formatDateValue(selectedCertificate?.startDate) ||
     "Sin fecha registrada";
   const modalDocumentUrl = modalDocumentMeta?.previewUrl || "";
   const modalDocumentType = modalDocumentMeta?.type || "";
