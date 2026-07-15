@@ -105,7 +105,7 @@ const normalizeHistory = (doc = {}) => ({
   documentMeta: mapCertificateMetaFromFirestore(doc.certificadoDigital),
   institution: doc.institucionMedica || "No indicado",
   notes: doc.notasMedicas || "",
-  reviewer: doc.aprobadoPor || "",
+  reviewer: doc.aprobadoPor || doc.revisadoPor || doc.reviewer || "",
   detailedReason: doc.diagnostico || "",
   startDate: toDateString(doc.fechaInicio),
   endDate: toDateString(doc.fechaFin),

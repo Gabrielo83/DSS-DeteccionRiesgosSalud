@@ -43,6 +43,36 @@ const pathologyCategoryMap = Object.fromEntries(
 const formatPathologyCategory = (value) =>
   pathologyCategoryMap[value] || value || "No indicado";
 
+const isOperationalNote = (value = "") =>
+  /Carga realizada desde Registro de Ausencias|Correccion enviada por|Validado \(|Rechazado \(|En Revision \(/i.test(
+    value,
+  );
+
+const extractDiagnosisFromMixedNote = (value = "") => {
+  if (!value || !isOperationalNote(value)) return value;
+  const beforeDecision = value.split("|")[0] || "";
+  const diagnosisMatch = beforeDecision.match(/\d{1,2}:\d{2}(?::\d{2})?\.\s*(.+)$/);
+  return diagnosisMatch?.[1]?.trim() || "";
+};
+
+const resolveHistoryDiagnosis = (record = {}) => {
+  const directDiagnosis = record.detailedReason || record.reason || "";
+  if (directDiagnosis && !isOperationalNote(directDiagnosis)) {
+    return directDiagnosis;
+  }
+  const recoveredDiagnosis = extractDiagnosisFromMixedNote(directDiagnosis || record.notes);
+  if (recoveredDiagnosis) return recoveredDiagnosis;
+  return "Sin diagnostico registrado";
+};
+
+const resolveHistoryNotes = (record = {}) => {
+  const notes = record.notes || "";
+  const decisionMatch = notes.match(
+    /(?:Validado|Rechazado|En Revision) \([^)]+\):\s*(.+)$/i,
+  );
+  return decisionMatch?.[1]?.trim() || notes || "Sin observaciones registradas.";
+};
+
 const statusOptions = [
   { value: "todos", label: "Todos los estados" },
   { value: "pendiente", label: "Pendiente" },
@@ -594,8 +624,6 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       detailedReason:
         selectedCertificate.detailedReason ||
         updatedEntry.detailedReason ||
-        selectedCertificate.notes ||
-        updatedEntry.notes ||
         "",
       startDate: updatedEntry.startDate,
       endDate: updatedEntry.endDate,
@@ -1906,11 +1934,8 @@ function MedicalValidation({ isDark, onToggleTheme }) {
               {filteredHistoryRecords.map((record, index) => {
                 const issuedLabel =
                   formatDateValue(record.issued) || record.issued || "No indicado";
-                const diagnosis =
-                  record.detailedReason ||
-                  record.reason ||
-                  record.notes ||
-                  "Sin diagnostico registrado";
+                const diagnosis = resolveHistoryDiagnosis(record);
+                const clinicalNotes = resolveHistoryNotes(record);
                 return (
                   <div
                     key={record.id}
@@ -1991,7 +2016,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
                       </div>
                     </div>
                     <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
-                      {record.notes}
+                      {clinicalNotes}
                     </div>
                     <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       {record.reviewer
