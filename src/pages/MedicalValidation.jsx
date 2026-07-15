@@ -559,6 +559,8 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       riskScore: `${riskDetails.score.toFixed(1)} / 10`,
       riskLevel: riskDetails.level,
       riskDescriptor: riskDetails.descriptor,
+      reviewer: reviewerName,
+      reviewedBy: reviewerName,
     };
 
     if (hasPlan) {
@@ -756,6 +758,11 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         (item.employee &&
           item.employee.toLowerCase() === (row.employee || "").toLowerCase()),
     );
+    const reviewerByReference = new Map(
+      queueMatches
+        .filter((item) => item.reference && (item.reviewer || item.reviewedBy))
+        .map((item) => [item.reference, item.reviewer || item.reviewedBy]),
+    );
     const recordMap = new Map();
     const makeKey = (entry) =>
       entry?.reference || entry?.id || `${entry?.title || "registro"}-${entry?.issued || ""}`;
@@ -764,7 +771,13 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     (records || []).forEach((record) => {
       const key = makeKey(record);
       if (!key) return;
-      recordMap.set(key, record);
+      recordMap.set(key, {
+        ...record,
+        reviewer:
+          record.reviewer ||
+          reviewerByReference.get(record.reference || record.id) ||
+          "",
+      });
     });
 
     queueMatches.forEach((item) => {
@@ -786,6 +799,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         riskLevel: item.riskLevel || null,
         document: item.certificateFileMeta?.name || "",
         documentMeta: item.certificateFileMeta || null,
+        reviewer: item.reviewer || item.reviewedBy || "",
       };
       const key = makeKey(normalized);
       if (!key) return;

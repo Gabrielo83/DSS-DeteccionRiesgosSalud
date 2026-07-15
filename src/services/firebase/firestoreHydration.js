@@ -81,6 +81,7 @@ const normalizeValidation = (doc = {}) => ({
   issueDate: toDateString(doc.fechaEmision || doc.fechaInicio),
   validityDate: toDateString(doc.fechaValidez || doc.fechaFin),
   notes: doc.notasMedicas || "Sin comentarios adicionales registrados.",
+  reviewer: doc.revisadoPor || doc.reviewer || doc.aprobadoPor || "",
   certificateFileMeta: mapCertificateMetaFromFirestore(doc.certificadoDigital),
   planActions: doc.planAcciones || [],
   planFollowUps: doc.planSeguimientos || [],
