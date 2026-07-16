@@ -110,6 +110,9 @@ const formatDateValue = (value) => {
 };
 
 const resolvePathologyLabel = (payload = {}) => {
+  if (payload.pathologyLabel) return payload.pathologyLabel;
+  if (payload.diagnosticGroupLabel) return payload.diagnosticGroupLabel;
+  if (payload.groupLabel) return payload.groupLabel;
   if (payload.pathologyCategory) {
     const label =
       pathologyCategoryMap.get(payload.pathologyCategory) ||
