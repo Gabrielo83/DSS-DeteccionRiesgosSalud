@@ -119,6 +119,22 @@ describe("Funcionalidad del Login", () => {
     ).toBeInTheDocument();
   });
 
+  it("muestra la politica de contrasena como checklist visual", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    expect(screen.getByText(/politica de contrasena/i)).toBeInTheDocument();
+    expect(screen.getByText(/8 caracteres o mas/i)).toBeInTheDocument();
+    expect(screen.getByText(/una mayuscula/i)).toBeInTheDocument();
+    expect(screen.getByText(/una minuscula/i)).toBeInTheDocument();
+    expect(screen.getByText(/un numero/i)).toBeInTheDocument();
+    expect(screen.getByText(/un simbolo/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/contrasena/i), "Super123*");
+
+    expect(screen.getAllByText(/OK/i).length).toBeGreaterThanOrEqual(5);
+  });
+
   it("rechaza credenciales validas que no pertenezcan a los usuarios demo.", async () => {
     const user = userEvent.setup();
     renderLogin();
@@ -134,6 +150,29 @@ describe("Funcionalidad del Login", () => {
 
     expect(
       screen.getByText(/credenciales invalidas/i)
+    ).toBeInTheDocument();
+  });
+
+  it("bloquea temporalmente el login luego de cinco intentos fallidos", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.type(
+      screen.getByLabelText(/correo electronico/i),
+      "otro@empresa.com"
+    );
+    await user.type(screen.getByLabelText(/contrasena/i), "Super123*");
+
+    const submitButton = screen.getByRole("button", {
+      name: /ingresar al sistema/i,
+    });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await user.click(submitButton);
+    }
+
+    expect(
+      screen.getByText(/acceso bloqueado temporalmente/i)
     ).toBeInTheDocument();
   });
 

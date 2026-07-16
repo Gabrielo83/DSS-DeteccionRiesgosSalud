@@ -15,3 +15,5 @@ export const OPERATION_QUEUE_STORAGE_KEY = "app_operation_queue";
 export const OPERATION_QUEUE_UPDATED_EVENT = "operation-queue-updated";
 export const AUDIT_LOG_STORAGE_KEY = "app_audit_log";
 export const AUDIT_LOG_UPDATED_EVENT = "audit-log-updated";
+export const PASSWORD_LOGIN_ATTEMPTS_STORAGE_KEY =
+  "app_password_login_attempts";

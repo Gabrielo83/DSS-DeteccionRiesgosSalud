@@ -80,6 +80,9 @@ Implementado:
 - El login local se conserva para contingencia y pruebas.
 - Auditoria registra login exitoso/fallido, usuario sin rol, accesos denegados y expiracion de sesion.
 - Sesion local expira por inactividad luego de 20 minutos.
+- Checklist visual de requisitos de contrasena en el login.
+- Bloqueo temporal local luego de 5 intentos fallidos por usuario.
+- Auditoria de bloqueo por intentos reiterados mediante `login_blocked`.
 
 Decision de implementacion para politicas de contrasena:
 
@@ -97,10 +100,10 @@ Decision de implementacion para politicas de contrasena:
   - `requireNumeric: true`
   - `requireNonAlphanumeric: true`
   - modo `ENFORCE` para rechazar contrasenas que no cumplan
-- El frontend debe acompanar con validacion visual de requisitos para mejorar experiencia y defensa, pero la validacion decisiva queda del lado Firebase/Auth.
+- El frontend acompana con validacion visual de requisitos para mejorar experiencia y defensa, pero la validacion decisiva queda del lado Firebase/Auth.
 - Se puede usar `validatePassword(auth, password)` en el cliente si se implementan formularios de alta o cambio de contrasena.
-- Se registraran intentos fallidos en auditoria.
-- Se implementara bloqueo temporal local ante intentos reiterados, por ejemplo 5 fallos consecutivos.
+- Se registran intentos fallidos en auditoria.
+- Se implemento bloqueo temporal local ante 5 fallos consecutivos.
 - MFA se evaluara para roles sensibles:
   - recomendado obligatorio para `superAdmin`
   - recomendado obligatorio o progresivo para `medico`
@@ -117,9 +120,9 @@ Texto base defendible:
 Orden recomendado de implementacion:
 
 1. Activar politica de contrasenas en Firebase/Identity Platform.
-2. Agregar validacion visual en frontend.
-3. Registrar intentos fallidos en auditoria.
-4. Agregar bloqueo temporal local por intentos.
+2. Agregar validacion visual en frontend. Completado.
+3. Registrar intentos fallidos en auditoria. Completado.
+4. Agregar bloqueo temporal local por intentos. Completado.
 5. Evaluar MFA para roles sensibles.
 6. Dejar contrasenas comprometidas como mejora con servicio externo o Blocking Function si el tiempo alcanza.
 
@@ -333,7 +336,8 @@ Cloud Functions:
 Eventos relevantes:
 
 - `login_success`
-- `login_failed`
+- `login_failure`
+- `login_blocked`
 - `user_role_missing`
 - `route_denied`
 - `session_expired`
@@ -434,9 +438,9 @@ Agregar aqui cualquier decision tomada fuera de este chat:
   - Requisitos: minimo 8 caracteres, mayuscula, minuscula, numero y simbolo.
   - Lugar de configuracion: Firebase Authentication / Google Cloud Identity Platform.
   - Modo sugerido: `ENFORCE`.
-  - Complemento frontend: checklist visual de requisitos y validacion con `validatePassword` si se implementa alta/cambio de contrasena.
-  - Auditoria: registrar intentos fallidos.
-  - Bloqueo temporal local: pendiente de implementar.
+  - Complemento frontend: checklist visual de requisitos implementado en login.
+  - Auditoria: intentos fallidos y bloqueo registrados.
+  - Bloqueo temporal local: implementado, 5 fallos consecutivos bloquean 15 minutos.
   - Capturas o evidencia: pendiente.
   - Impacto en defensa: alinea el sistema con la memoria del TFG y separa autenticacion backend de autorizacion funcional.
 

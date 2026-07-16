@@ -4,6 +4,13 @@ import ThemeToggle from "../components/ThemeToggle.jsx";
 import { MOCK_USERS } from "../data/mockUsers.js";
 import { isFirebaseProvider } from "../services/appMode.js";
 import { appendAuditLog } from "../utils/auditLog.js";
+import {
+  clearLoginFailures,
+  formatLockRemaining,
+  getLoginLockStatus,
+  registerLoginFailure,
+  validatePasswordPolicy,
+} from "../utils/passwordPolicy.js";
 
 function Login({
   isDark,
@@ -19,6 +26,32 @@ function Login({
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isFirebaseEnabled = isFirebaseProvider();
+  const passwordValidation = validatePasswordPolicy(formValues.password);
+
+  const registerFailedAttempt = (email, metadata = {}) => {
+    const lockStatus = registerLoginFailure(email);
+    appendAuditLog("login_failure", {
+      user: email,
+      metadata: {
+        ...metadata,
+        failedAttempts: lockStatus.attempts,
+        locked: lockStatus.locked,
+      },
+    });
+
+    if (lockStatus.locked) {
+      setError(
+        `Acceso bloqueado temporalmente por intentos reiterados. Intenta nuevamente en ${formatLockRemaining(
+          lockStatus.lockedUntil,
+        )}.`,
+      );
+      return;
+    }
+
+    setError(
+      `Credenciales invalidas. Intentos restantes antes del bloqueo: ${lockStatus.remainingAttempts}.`,
+    );
+  };
 
   useEffect(() => {
     if (isAuthenticated && userRole) {
@@ -35,7 +68,7 @@ function Login({
     event.preventDefault();
     if (isSubmitting) return;
     const email = formValues.email.trim();
-    const password = formValues.password.trim();
+    const password = formValues.password;
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!email || !password) {
@@ -48,10 +81,25 @@ function Login({
       return;
     }
 
-    const passwordPolicy =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+    const lockStatus = getLoginLockStatus(email);
 
-    if (!passwordPolicy.test(password)) {
+    if (lockStatus.locked) {
+      setError(
+        `Acceso bloqueado temporalmente por intentos reiterados. Intenta nuevamente en ${formatLockRemaining(
+          lockStatus.lockedUntil,
+        )}.`,
+      );
+      appendAuditLog("login_blocked", {
+        user: email,
+        metadata: {
+          reason: "too-many-failed-attempts",
+          lockedUntil: new Date(lockStatus.lockedUntil).toISOString(),
+        },
+      });
+      return;
+    }
+
+    if (!passwordValidation.isValid) {
       setError(
         "La contrasena debe tener al menos 8 caracteres, incluir mayusculas, minusculas, numeros y simbolos.",
       );
@@ -63,6 +111,7 @@ function Login({
       import("../utils/firebaseAuth.js")
         .then(({ signInWithEmail }) => signInWithEmail(email, password))
         .then(() => {
+          clearLoginFailures(email);
           setError("");
           appendAuditLog("login_success", {
             user: email,
@@ -74,13 +123,13 @@ function Login({
             authError?.code === "auth/invalid-credential"
               ? "Credenciales invalidas."
               : "No se pudo iniciar sesion. Verifica tus datos.";
-          setError(message);
-          appendAuditLog("login_failure", {
-            user: email,
-            metadata: {
-              code: authError?.code || "firebase-auth-error",
-            },
+          registerFailedAttempt(email, {
+            code: authError?.code || "firebase-auth-error",
+            provider: "firebase",
           });
+          if (authError?.code !== "auth/invalid-credential") {
+            setError(message);
+          }
         })
         .finally(() => {
           setIsSubmitting(false);
@@ -95,14 +144,13 @@ function Login({
     );
 
     if (!matchedUser) {
-      setError("Credenciales invalidas. Verifica tus datos de acceso.");
-      appendAuditLog("login_failure", {
-        user: email,
-        metadata: { mode: "local" },
+      registerFailedAttempt(email, {
+        mode: "local",
       });
       return;
     }
 
+    clearLoginFailures(email);
     setError("");
     setIsSubmitting(true);
     if (typeof onLoginSuccess === "function") {
@@ -200,6 +248,28 @@ function Login({
                     onChange={handleChange}
                     className="w-full rounded-2xl border border-slate-400 bg-white px-11 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:bg-slate-950"
                   />
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
+                  <p className="mb-1 font-semibold text-slate-700 dark:text-slate-200">
+                    Politica de contrasena
+                  </p>
+                  <ul className="grid gap-1 sm:grid-cols-2">
+                    {passwordValidation.requirements.map((requirement) => (
+                      <li
+                        key={requirement.id}
+                        className={
+                          requirement.passed
+                            ? "text-emerald-600 dark:text-emerald-300"
+                            : "text-slate-500 dark:text-slate-400"
+                        }
+                      >
+                        <span aria-hidden="true">
+                          {requirement.passed ? "OK" : "-"}
+                        </span>{" "}
+                        {requirement.label}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
 
