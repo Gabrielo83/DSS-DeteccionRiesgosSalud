@@ -7,6 +7,7 @@ import { calculateRiskScoreWithConfig } from "./riskEngine.js";
 initializeApp();
 
 const db = getFirestore();
+const RISK_ENGINE_VERSION = "risk-engine-v2";
 
 const toDate = (value) => {
   if (!value) return null;
@@ -35,6 +36,25 @@ const isWithinMonthWindow = (dateValue, referenceDate, months) => {
   return date >= windowStart && date <= reference;
 };
 
+const normalizeStatus = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const isValidatedStatus = (value) => {
+  const normalized = normalizeStatus(value);
+  return normalized === "validado" || normalized === "validada";
+};
+
+const resolveReferenceDate = (validation) =>
+  validation.fechaInicio ||
+  validation.fechaEmision ||
+  validation.creadoEn ||
+  validation.updatedAt ||
+  validation.actualizadoEn;
+
 const loadRiskConfig = async () => {
   const [parametersSnapshot, pathologiesSnapshot] = await Promise.all([
     db.doc("parametros_riesgo/global").get(),
@@ -50,15 +70,16 @@ const loadRiskConfig = async () => {
   };
 };
 
-const countOccurrences = async (validation) => {
+const countOccurrences = async (validation, riskConfig) => {
   const employeeId = validation.employeeId;
   const pathologyGroup = validation.grupoPatologia;
   if (!employeeId || !pathologyGroup) return 1;
 
-  const config = await loadRiskConfig();
-  const months = config.parameters?.periodoEvaluacionMeses || 6;
-  const referenceDate =
-    validation.fechaInicio || validation.fechaEmision || validation.creadoEn;
+  const months =
+    riskConfig.parameters?.periodoEvaluacionMeses ||
+    riskConfig.parameters?.reviewPeriodMonths ||
+    6;
+  const referenceDate = resolveReferenceDate(validation);
 
   const snapshot = await db
     .collection("validaciones_medicas")
@@ -68,17 +89,22 @@ const countOccurrences = async (validation) => {
 
   const count = snapshot.docs.filter((doc) => {
     const item = doc.data();
+    if (!isValidatedStatus(item.estado || item.status)) return false;
     return isWithinMonthWindow(
-      item.fechaInicio || item.fechaEmision || item.creadoEn,
+      resolveReferenceDate(item),
       referenceDate,
       months,
     );
   }).length;
 
-  return Math.max(1, count);
+  if (isValidatedStatus(validation.estado || validation.status)) {
+    return Math.max(1, count);
+  }
+
+  return Math.max(0, count);
 };
 
-const buildRiskInput = async (validation) => {
+const buildRiskInput = async (validation, riskConfig) => {
   const absenceDays =
     Number(validation.dias) ||
     diffDaysInclusive(validation.fechaInicio, validation.fechaFin) ||
@@ -89,7 +115,8 @@ const buildRiskInput = async (validation) => {
     detailedReason: validation.diagnostico || validation.notasMedicas || "",
     pathologyCategory: validation.grupoPatologia || "",
     durationDays: absenceDays,
-    occurrenceCount: await countOccurrences(validation),
+    occurrenceCount: await countOccurrences(validation, riskConfig),
+    referenceDate: resolveReferenceDate(validation) || null,
   };
 };
 
@@ -100,12 +127,62 @@ const riskChanged = (validation, riskAssessment) => {
     !Number.isFinite(currentScore) ||
     Math.abs(currentScore - riskAssessment.score) >= 0.05 ||
     currentLevel !== riskAssessment.level ||
-    validation.riesgoCalculadoPor !== "cloud-functions"
+    validation.riesgoCalculadoPor !== "cloud-functions" ||
+    validation.procesamientoRiesgo?.version !== RISK_ENGINE_VERSION
   );
 };
 
-const writeAudit = async (reference, validation, riskAssessment) => {
+const buildProcessingMetadata = (validation, riskInput, riskConfig, riskAssessment) => {
+  const parameters = riskConfig.parameters || {};
+  return {
+    origen: "cloud-functions",
+    version: RISK_ENGINE_VERSION,
+    actualizadoEn: FieldValue.serverTimestamp(),
+    estadoEvaluado: validation.estado || validation.status || "",
+    insumos: {
+      diasAusencia: riskInput.durationDays,
+      recurrenciasVentana: riskInput.occurrenceCount,
+      periodoEvaluacionMeses:
+        parameters.periodoEvaluacionMeses ||
+        parameters.reviewPeriodMonths ||
+        6,
+      grupoPatologia: validation.grupoPatologia || "",
+      tipoAusencia: riskInput.absenceType,
+      fechaReferencia: riskInput.referenceDate || "",
+    },
+    parametros: {
+      umbralMedio:
+        parameters.umbralMedioRiesgo || parameters.mediumRiskThreshold || 5,
+      umbralAlto:
+        parameters.umbralAltoRiesgo || parameters.highRiskThreshold || 7,
+      recurrenciasMedia:
+        parameters.recurrenciasMedia || parameters.mediumOccurrenceCount || 2,
+      recurrenciasAlta:
+        parameters.recurrenciasAlta || parameters.highOccurrenceCount || 3,
+    },
+    resultado: {
+      puntaje: riskAssessment.score,
+      nivel: riskAssessment.level,
+      descriptor: riskAssessment.descriptor,
+      perfilDetectado: riskAssessment.matchedProfile || "",
+    },
+  };
+};
+
+const writeAudit = async (
+  reference,
+  validation,
+  riskAssessment,
+  riskInput,
+  riskConfig,
+) => {
   const auditRef = db.collection("auditoria").doc();
+  const processing = buildProcessingMetadata(
+    validation,
+    riskInput,
+    riskConfig,
+    riskAssessment,
+  );
   await auditRef.set({
     id: auditRef.id,
     eventType: "riesgo_recalculado_backend",
@@ -120,16 +197,41 @@ const writeAudit = async (reference, validation, riskAssessment) => {
     riesgoPuntaje: riskAssessment.score,
     riesgoNivel: riskAssessment.level,
     perfilDetectado: riskAssessment.matchedProfile || "",
+    recurrenciasVentana: riskInput.occurrenceCount,
+    periodoEvaluacionMeses: processing.insumos.periodoEvaluacionMeses,
     metadata: {
       employeeId: validation.employeeId || "",
       nombreCompleto: validation.nombreCompleto || "",
       riesgoPuntaje: riskAssessment.score,
       riesgoNivel: riskAssessment.level,
       perfilDetectado: riskAssessment.matchedProfile || "",
+      procesamientoRiesgo: processing,
     },
     creadoEn: FieldValue.serverTimestamp(),
     timestamp: FieldValue.serverTimestamp(),
   });
+};
+
+const syncHistoryRisk = async (reference, validation, riskAssessment, riskInput) => {
+  if (!isValidatedStatus(validation.estado || validation.status)) return;
+
+  const historyRef = db.collection("historial_medico").doc(reference);
+  const historySnapshot = await historyRef.get();
+  if (!historySnapshot.exists) return;
+
+  await historyRef.set(
+    {
+      riesgoPuntaje: riskAssessment.score,
+      riesgoNivel: riskAssessment.level,
+      riesgoDescriptor: riskAssessment.descriptor,
+      riesgoPerfilDetectado: riskAssessment.matchedProfile || "",
+      riesgoCalculadoPor: "cloud-functions",
+      riesgoRecurrencias: riskInput.occurrenceCount,
+      riesgoActualizadoEn: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
 };
 
 export const recalcularRiesgoValidacionMedica = onDocumentWritten(
@@ -144,7 +246,7 @@ export const recalcularRiesgoValidacionMedica = onDocumentWritten(
     const reference = event.params.reference;
     const validation = afterSnapshot.data();
     const riskConfig = await loadRiskConfig();
-    const riskInput = await buildRiskInput(validation);
+    const riskInput = await buildRiskInput(validation, riskConfig);
     const riskAssessment = calculateRiskScoreWithConfig(riskInput, riskConfig);
 
     if (!riskChanged(validation, riskAssessment)) {
@@ -162,22 +264,30 @@ export const recalcularRiesgoValidacionMedica = onDocumentWritten(
         riesgoDescriptor: riskAssessment.descriptor,
         riesgoPerfilDetectado: riskAssessment.matchedProfile || "",
         riesgoCalculadoPor: "cloud-functions",
+        riesgoRecurrencias: riskInput.occurrenceCount,
+        riesgoVentanaMeses:
+          riskConfig.parameters?.periodoEvaluacionMeses ||
+          riskConfig.parameters?.reviewPeriodMonths ||
+          6,
         riesgoActualizadoEn: FieldValue.serverTimestamp(),
-        procesamientoRiesgo: {
-          origen: "cloud-functions",
-          version: "risk-engine-v1",
-          actualizadoEn: FieldValue.serverTimestamp(),
-        },
+        procesamientoRiesgo: buildProcessingMetadata(
+          validation,
+          riskInput,
+          riskConfig,
+          riskAssessment,
+        ),
       },
       { merge: true },
     );
 
-    await writeAudit(reference, validation, riskAssessment);
+    await syncHistoryRisk(reference, validation, riskAssessment, riskInput);
+    await writeAudit(reference, validation, riskAssessment, riskInput, riskConfig);
 
     logger.info("Riesgo recalculado por Cloud Functions.", {
       reference,
       riskScore: riskAssessment.score,
       riskLevel: riskAssessment.level,
+      occurrenceCount: riskInput.occurrenceCount,
     });
   },
 );
