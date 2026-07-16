@@ -15,6 +15,14 @@ Objetivo del documento: centralizar decisiones tecnicas, implementaciones cerrad
   - Verde: Firebase.
   - Naranja: local.
 
+## Restriccion de cambios en el frontend
+
+- El diseno visual y los textos visibles actuales forman parte de la version del TFG ya presentada y validada.
+- No se deben modificar estilos, distribucion, componentes visibles, etiquetas, leyendas, mensajes ni flujos de navegacion sin consulta y aprobacion explicita del autor del TFG.
+- Las mejoras tecnicas deben conservar la interfaz existente. Si una correccion requiere un cambio perceptible, primero se debe explicar el motivo, el impacto y la alternativa propuesta.
+- Esta restriccion tambien aplica al trabajo realizado en chats o tareas paralelas.
+- Las pruebas automatizadas pueden reforzarse para proteger esta estabilidad visual y funcional, pero no deben introducir cambios visibles por si mismas.
+
 ## Idea funcional para defensa
 
 El sistema no diagnostica enfermedades ni reemplaza al medico laboral. Organiza certificados, ausencias y antecedentes; permite validacion profesional; consolida legajos; calcula indicadores de riesgo y detecta recurrencias para priorizar acciones preventivas.
