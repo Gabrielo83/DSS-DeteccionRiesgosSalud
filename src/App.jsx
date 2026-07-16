@@ -168,6 +168,7 @@ function App() {
   useEffect(() => {
     if (!isFirebaseEnabled || !isAuthenticated || !userRole) return undefined;
     let cancelled = false;
+    let unsubscribeRealtime;
     const hydrate = () => {
       import("./services/firebase/firestoreHydration.js")
         .then(({ hydrateFirebaseData }) =>
@@ -183,9 +184,28 @@ function App() {
         });
     };
     hydrate();
+    import("./services/firebase/firestoreHydration.js")
+      .then(({ startFirebaseRealtimeSync }) => {
+        if (cancelled) return;
+        unsubscribeRealtime = startFirebaseRealtimeSync({
+          user: currentUser,
+          role: userRole,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        appendAuditLog("firebase_realtime_sync_failed", {
+          user: currentUser?.email,
+          role: userRole,
+          metadata: { error: error?.message || "Error desconocido" },
+        });
+      });
     const intervalId = window.setInterval(hydrate, 60 * 1000);
     return () => {
       cancelled = true;
+      if (typeof unsubscribeRealtime === "function") {
+        unsubscribeRealtime();
+      }
       window.clearInterval(intervalId);
     };
   }, [currentUser, isAuthenticated, isFirebaseEnabled, userRole]);

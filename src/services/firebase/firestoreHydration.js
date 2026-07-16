@@ -7,6 +7,8 @@ import {
   getParametrosRiesgo,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
+import { collection, onSnapshot } from "firebase/firestore";
+import { getFirebaseServices } from "./firebaseClient.js";
 import { replaceDrafts } from "../../utils/draftStorage.js";
 import { replaceEmployees } from "../../utils/employeeStorage.js";
 import { replaceAllHistory } from "../../utils/historyStorage.js";
@@ -283,5 +285,64 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     historial: historial.length,
     borradores: borradores.length,
     planes: planes.length,
+  };
+};
+
+const mapSnapshotDocs = (snapshot) =>
+  snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  }));
+
+export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
+  const clinicalRoles = ["superAdmin", "medico", "administrativoSalud"];
+  const canReadClinical = clinicalRoles.includes(role);
+  const { db } = getFirebaseServices();
+  const unsubscribers = [];
+
+  if (canReadClinical) {
+    unsubscribers.push(
+      onSnapshot(
+        collection(db, "validaciones_medicas"),
+        (snapshot) => {
+          replaceValidationQueue(
+            mapSnapshotDocs(snapshot).map(normalizeValidation),
+          );
+        },
+        (error) => {
+          appendAuditLog("firebase_realtime_sync_failed", {
+            user: user?.email,
+            role,
+            metadata: {
+              collection: "validaciones_medicas",
+              error: error?.message || "No se pudo escuchar Firestore.",
+            },
+          });
+        },
+      ),
+    );
+  }
+
+  unsubscribers.push(
+    onSnapshot(
+      collection(db, "borradores"),
+      (snapshot) => {
+        replaceDrafts(mapSnapshotDocs(snapshot).map(normalizeDraft));
+      },
+      (error) => {
+        appendAuditLog("firebase_realtime_sync_failed", {
+          user: user?.email,
+          role,
+          metadata: {
+            collection: "borradores",
+            error: error?.message || "No se pudo escuchar Firestore.",
+          },
+        });
+      },
+    ),
+  );
+
+  return () => {
+    unsubscribers.forEach((unsubscribe) => unsubscribe());
   };
 };
