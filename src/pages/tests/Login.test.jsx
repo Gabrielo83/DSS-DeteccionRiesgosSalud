@@ -99,7 +99,18 @@ describe("Funcionalidad del Login", () => {
     expect(screen.getByText(/ingresa un correo valido/i)).toBeInTheDocument();
   });
 
-  it("se requiere un password seguro (8+ caracteres, mayuscula, minuscula, numero y simbolo)", async () => {
+  it("no expone la politica de contrasena en el login normal", () => {
+    renderLogin();
+
+    expect(screen.queryByText(/politica de contrasena/i)).toBeNull();
+    expect(screen.queryByText(/8 caracteres o mas/i)).toBeNull();
+    expect(screen.queryByText(/una mayuscula/i)).toBeNull();
+    expect(screen.queryByText(/una minuscula/i)).toBeNull();
+    expect(screen.queryByText(/un numero/i)).toBeNull();
+    expect(screen.queryByText(/un simbolo/i)).toBeNull();
+  });
+
+  it("no valida complejidad de contrasena en el login normal", async () => {
     const user = userEvent.setup();
     renderLogin();
 
@@ -113,26 +124,13 @@ describe("Funcionalidad del Login", () => {
     );
 
     expect(
-      screen.getByText(
+      screen.queryByText(
         /la contrasena debe tener al menos 8 caracteres, incluir mayusculas, minusculas, numeros y simbolos/i,
-      )
+      ),
+    ).toBeNull();
+    expect(
+      screen.getByText(/credenciales invalidas/i)
     ).toBeInTheDocument();
-  });
-
-  it("muestra la politica de contrasena como checklist visual", async () => {
-    const user = userEvent.setup();
-    renderLogin();
-
-    expect(screen.getByText(/politica de contrasena/i)).toBeInTheDocument();
-    expect(screen.getByText(/8 caracteres o mas/i)).toBeInTheDocument();
-    expect(screen.getByText(/una mayuscula/i)).toBeInTheDocument();
-    expect(screen.getByText(/una minuscula/i)).toBeInTheDocument();
-    expect(screen.getByText(/un numero/i)).toBeInTheDocument();
-    expect(screen.getByText(/un simbolo/i)).toBeInTheDocument();
-
-    await user.type(screen.getByLabelText(/contrasena/i), "Super123*");
-
-    expect(screen.getAllByText(/OK/i).length).toBeGreaterThanOrEqual(5);
   });
 
   it("rechaza credenciales validas que no pertenezcan a los usuarios demo.", async () => {

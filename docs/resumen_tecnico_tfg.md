@@ -80,7 +80,7 @@ Implementado:
 - El login local se conserva para contingencia y pruebas.
 - Auditoria registra login exitoso/fallido, usuario sin rol, accesos denegados y expiracion de sesion.
 - Sesion local expira por inactividad luego de 20 minutos.
-- Checklist visual de requisitos de contrasena en el login.
+- Modulo reutilizable de politica de contrasena para alta o restablecimiento.
 - Bloqueo temporal local luego de 5 intentos fallidos por usuario.
 - Auditoria de bloqueo por intentos reiterados mediante `login_blocked`.
 
@@ -100,7 +100,7 @@ Decision de implementacion para politicas de contrasena:
   - `requireNumeric: true`
   - `requireNonAlphanumeric: true`
   - modo `ENFORCE` para rechazar contrasenas que no cumplan
-- El frontend acompana con validacion visual de requisitos para mejorar experiencia y defensa, pero la validacion decisiva queda del lado Firebase/Auth.
+- El frontend debe acompanar con validacion visual de requisitos en pantallas de alta, primer acceso o restablecimiento de contrasena, pero no en el login normal.
 - Se puede usar `validatePassword(auth, password)` en el cliente si se implementan formularios de alta o cambio de contrasena.
 - Se registran intentos fallidos en auditoria.
 - Se implemento bloqueo temporal local ante 5 fallos consecutivos.
@@ -120,7 +120,7 @@ Texto base defendible:
 Orden recomendado de implementacion:
 
 1. Activar politica de contrasenas en Firebase/Identity Platform.
-2. Agregar validacion visual en frontend. Completado.
+2. Agregar validacion visual en frontend. Preparado como modulo; pendiente de aplicar en alta/restablecimiento.
 3. Registrar intentos fallidos en auditoria. Completado.
 4. Agregar bloqueo temporal local por intentos. Completado.
 5. Evaluar MFA para roles sensibles.
@@ -438,7 +438,7 @@ Agregar aqui cualquier decision tomada fuera de este chat:
   - Requisitos: minimo 8 caracteres, mayuscula, minuscula, numero y simbolo.
   - Lugar de configuracion: Firebase Authentication / Google Cloud Identity Platform.
   - Modo sugerido: `ENFORCE`.
-  - Complemento frontend: checklist visual de requisitos implementado en login.
+  - Complemento frontend: modulo de checklist preparado; no se muestra en el login normal.
   - Auditoria: intentos fallidos y bloqueo registrados.
   - Bloqueo temporal local: implementado, 5 fallos consecutivos bloquean 15 minutos.
   - Capturas o evidencia: pendiente.
