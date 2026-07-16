@@ -81,15 +81,47 @@ Implementado:
 - Auditoria registra login exitoso/fallido, usuario sin rol, accesos denegados y expiracion de sesion.
 - Sesion local expira por inactividad luego de 20 minutos.
 
-Para completar desde chat paralelo:
+Decision de implementacion para politicas de contrasena:
 
-- Registrar decision final sobre politicas de contrasenas de Firebase/Google Cloud.
-- Indicar si se exige longitud minima, complejidad, bloqueo o MFA.
-- Documentar si esa politica queda aplicada desde Firebase Console o Google Cloud Identity Platform.
+- La politica fuerte debe configurarse en Firebase Authentication / Google Cloud Identity Platform, no solo en el frontend.
+- Requisitos consignados por el TFG:
+  - minimo 8 caracteres
+  - al menos una mayuscula
+  - al menos una minuscula
+  - al menos un numero
+  - al menos un simbolo
+- Configuracion esperada en Identity Platform:
+  - `minLength: 8`
+  - `requireUppercase: true`
+  - `requireLowercase: true`
+  - `requireNumeric: true`
+  - `requireNonAlphanumeric: true`
+  - modo `ENFORCE` para rechazar contrasenas que no cumplan
+- El frontend debe acompanar con validacion visual de requisitos para mejorar experiencia y defensa, pero la validacion decisiva queda del lado Firebase/Auth.
+- Se puede usar `validatePassword(auth, password)` en el cliente si se implementan formularios de alta o cambio de contrasena.
+- Se registraran intentos fallidos en auditoria.
+- Se implementara bloqueo temporal local ante intentos reiterados, por ejemplo 5 fallos consecutivos.
+- MFA se evaluara para roles sensibles:
+  - recomendado obligatorio para `superAdmin`
+  - recomendado obligatorio o progresivo para `medico`
+  - opcional/progresivo para `administrativoSalud`
+- Las contrasenas comprometidas se documentan como control complementario avanzado:
+  - posible integracion con servicio externo tipo Have I Been Pwned usando k-anonymity
+  - posible uso de Blocking Functions para impedir login/registro
+  - nunca guardar ni loguear contrasenas
 
 Texto base defendible:
 
 > En modo conectado, la autenticacion se delega en Firebase Auth. El sistema complementa esa identidad con una capa funcional de roles en Firestore. Las politicas de contrasena se administran desde Firebase/Google Cloud, separando autenticacion tecnica de autorizacion funcional.
+
+Orden recomendado de implementacion:
+
+1. Activar politica de contrasenas en Firebase/Identity Platform.
+2. Agregar validacion visual en frontend.
+3. Registrar intentos fallidos en auditoria.
+4. Agregar bloqueo temporal local por intentos.
+5. Evaluar MFA para roles sensibles.
+6. Dejar contrasenas comprometidas como mejora con servicio externo o Blocking Function si el tiempo alcanza.
 
 ## Arquitectura de datos Firebase
 
@@ -399,14 +431,20 @@ Nota: en Codex, Vite/esbuild a veces falla dentro del sandbox con acceso denegad
 Agregar aqui cualquier decision tomada fuera de este chat:
 
 - Politicas de contrasena:
-  - Requisitos:
-  - Lugar de configuracion:
-  - Capturas o evidencia:
-  - Impacto en defensa:
+  - Requisitos: minimo 8 caracteres, mayuscula, minuscula, numero y simbolo.
+  - Lugar de configuracion: Firebase Authentication / Google Cloud Identity Platform.
+  - Modo sugerido: `ENFORCE`.
+  - Complemento frontend: checklist visual de requisitos y validacion con `validatePassword` si se implementa alta/cambio de contrasena.
+  - Auditoria: registrar intentos fallidos.
+  - Bloqueo temporal local: pendiente de implementar.
+  - Capturas o evidencia: pendiente.
+  - Impacto en defensa: alinea el sistema con la memoria del TFG y separa autenticacion backend de autorizacion funcional.
 
 - MFA / segundo factor:
-  - Se implementa:
-  - Se documenta como evolucion:
+  - Se implementa: pendiente de decidir.
+  - Recomendacion: obligatorio para `superAdmin` y `medico`; progresivo u opcional para `administrativoSalud`.
+  - Base tecnica: Firebase Auth / Identity Platform MFA para web.
+  - Se documenta como evolucion: si no se alcanza a activar completamente antes de la defensa.
 
 - App Check:
   - Se implementa:
