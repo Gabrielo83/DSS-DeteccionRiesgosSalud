@@ -10,6 +10,9 @@ const toNumber = (value) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const cleanText = (value) =>
+  typeof value === "string" ? value.trim() : value || "";
+
 export const mapDraftPayloadToFirestore = (draftPayload) => {
   const formValues = draftPayload?.formValues || {};
   return {
@@ -19,7 +22,7 @@ export const mapDraftPayloadToFirestore = (draftPayload) => {
     sector: formValues.sector || "",
     puesto: formValues.position || "",
     tipo: formValues.absenceType || "",
-    diagnostico: formValues.detailedReason || "",
+    diagnostico: cleanText(formValues.detailedReason),
     fechaInicio: formValues.startDate || "",
     fechaFin: formValues.endDate || "",
     ausenciaDias: draftPayload?.absenceDays ?? null,
@@ -51,20 +54,20 @@ export const mapValidationEntryToFirestore = (entry) => ({
   puesto: entry?.position || "",
   tipo: entry?.absenceType || "",
   tipoCertificado: entry?.certificateType || "",
-  diagnostico: entry?.detailedReason || "",
+  diagnostico: cleanText(entry?.detailedReason),
   fechaInicio: entry?.startDate || "",
   fechaFin: entry?.endDate || "",
   dias: entry?.absenceDays ?? null,
   fechaEmision: entry?.issueDate || entry?.startDate || "",
   fechaValidez: entry?.validityDate || entry?.endDate || "",
-  institucionMedica: entry?.institution || "",
+  institucionMedica: cleanText(entry?.institution),
   prioridad: entry?.priority || "",
   estado: normalizeEstado(entry?.status || ""),
   riesgoPuntaje: toNumber(entry?.riskScoreValue ?? entry?.riskScore),
   riesgoNivel: entry?.riskLevel || "",
-  notasMedicas: entry?.medicalNotes || entry?.notes || "",
+  notasMedicas: cleanText(entry?.medicalNotes || entry?.notes),
   grupoPatologia: entry?.pathologyCategory || "",
-  cie10: entry?.cieCode || "",
+  cie10: cleanText(entry?.cieCode),
   certificadoDigital: entry?.certificateFileMeta
     ? {
         nombre: entry.certificateFileMeta.name,
@@ -92,12 +95,12 @@ export const mapHistoryRecordToFirestore = (record) => ({
   puesto: record?.position || record?.puesto || "",
   tipo: record?.title || record?.absenceType || "",
   tipoCertificado: record?.certificateType || record?.title || "",
-  diagnostico: record?.detailedReason || "",
+  diagnostico: cleanText(record?.detailedReason),
   fechaInicio: record?.startDate || "",
   fechaFin: record?.endDate || "",
   dias: record?.days ?? null,
   fechaEmision: record?.issued || record?.startDate || "",
-  institucionMedica: record?.institution || "",
+  institucionMedica: cleanText(record?.institution),
   riesgoPuntaje: toNumber(record?.riskScore),
   riesgoNivel: record?.riskLevel || "",
   estadoFinal: normalizeEstado(record?.status || ""),
@@ -108,9 +111,9 @@ export const mapHistoryRecordToFirestore = (record) => ({
     record?.validatedAt ||
     record?.lastDecisionAt ||
     null,
-  notasMedicas: record?.notes || "",
+  notasMedicas: cleanText(record?.notes),
   grupoPatologia: record?.pathologyCategory || "",
-  cie10: record?.cieCode || "",
+  cie10: cleanText(record?.cieCode),
   certificadoDigital: record?.documentMeta
     ? {
         nombre: record.documentMeta.name,
@@ -150,15 +153,15 @@ export const mapAbsenceFormToFirestore = ({
   sector: formValues?.sector || "",
   puesto: formValues?.position || "",
   tipo: formValues?.absenceType || "",
-  diagnostico: formValues?.detailedReason || "",
+  diagnostico: cleanText(formValues?.detailedReason),
   requiereAprobacion: requiresApproval || formValues?.requiresApproval || "",
   grupoPatologia: formValues?.pathologyCategory || "",
-  cie10: formValues?.cieCode || "",
+  cie10: cleanText(formValues?.cieCode),
   observacionesAdicionales: formValues?.additionalNotes || "",
   fechaInicio: formValues?.startDate || "",
   fechaFin: formValues?.endDate || "",
   dias: absenceDays ?? null,
-  institucionMedica: certificateInstitution || "",
+  institucionMedica: cleanText(certificateInstitution),
   certificadoDigital: certificateFileMeta
     ? {
         nombre: certificateFileMeta.name,
@@ -215,7 +218,7 @@ export const mapUsuarioToFirestore = (user) => ({
 export const mapPatologiaToFirestore = (pathology) => ({
   pathologyId: pathology?.pathologyId || pathology?.id || "",
   nombre: pathology?.name || pathology?.nombre || "",
-  cie10: pathology?.cie10 || pathology?.cie10Code || "",
+  cie10: cleanText(pathology?.cie10 || pathology?.cie10Code),
   grupo: pathology?.group || pathology?.grupo || "",
   riesgoBase: toNumber(pathology?.baseRisk ?? pathology?.riesgoBase),
 });
