@@ -67,8 +67,12 @@ const normalizeValidation = (doc = {}) => ({
   sector: doc.sector || "",
   status: normalizeStatusLabel(doc.estado),
   priority: doc.prioridad || "Media",
-  submitted: toIsoString(doc.creadoEn || doc.actualizadoEn),
-  receivedTimestamp: doc.creadoEn?.toMillis?.() || Date.now(),
+  submitted: toIsoString(doc.creadoEn || doc.actualizadoEn || doc.updatedAt),
+  receivedTimestamp:
+    doc.creadoEn?.toMillis?.() ||
+    doc.actualizadoEn?.toMillis?.() ||
+    doc.updatedAt?.toMillis?.() ||
+    Date.now(),
   detailedReason: doc.diagnostico || "",
   startDate: toDateString(doc.fechaInicio),
   endDate: toDateString(doc.fechaFin),
@@ -82,6 +86,7 @@ const normalizeValidation = (doc = {}) => ({
   validityDate: toDateString(doc.fechaValidez || doc.fechaFin),
   notes: doc.notasMedicas || "Sin comentarios adicionales registrados.",
   reviewer: doc.revisadoPor || doc.reviewer || doc.aprobadoPor || "",
+  lastDecisionAt: toIsoString(doc.revisadoEn || doc.updatedAt || doc.actualizadoEn),
   certificateFileMeta: mapCertificateMetaFromFirestore(doc.certificadoDigital),
   planActions: doc.planAcciones || [],
   planFollowUps: doc.planSeguimientos || [],

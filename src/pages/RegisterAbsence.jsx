@@ -214,6 +214,34 @@ const formatDateEs = (value) => {
   return `${day}/${month}/${d.getFullYear()}`;
 };
 
+const extractRevisionDateFromNotes = (notes = "") => {
+  const match = notes.match(/En Revision \(([^)]+)\)|En RevisiÃ³n \(([^)]+)\)/i);
+  return match?.[1] || match?.[2] || "";
+};
+
+const resolveRevisionSince = (entry) =>
+  entry?.lastDecisionAt ||
+  entry?.reviewedAt ||
+  entry?.reviewedTimestamp ||
+  entry?.submitted ||
+  extractRevisionDateFromNotes(entry?.notes || "") ||
+  "";
+
+const formatDateTimeEs = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  return value;
+};
+
 const resolveRecordEndDate = (record) => {
   if (!record) return "";
   if (record.endDate) return record.endDate;
@@ -1706,7 +1734,8 @@ const clearCertificateFile = () => {
                         : "Sin observaciones registradas.";
                     })();
                     const pendingSince =
-                      item.lastDecisionAt || item.submitted || "Sin registro";
+                      formatDateTimeEs(resolveRevisionSince(item)) ||
+                      "Sin registro";
                     return (
                       <div
                         key={item.reference}
