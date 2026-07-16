@@ -697,9 +697,9 @@ function Dashboard({ isDark, onToggleTheme }) {
       };
 
       const toneData = classifyTone();
-      const statsParts = [`${headcount} activos`];
-      if (validated.length > 0) statsParts.push(`${validated.length} validados`);
-      if (alerts > 0) statsParts.push(`${alerts} alertas`);
+      const summaryLabel = `${validated.length} ausencia${
+        validated.length === 1 ? "" : "s"
+      } - ${alerts} alerta${alerts === 1 ? "" : "s"}`;
 
       return {
         sector,
@@ -714,7 +714,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         status: toneData.status,
         tone: toneData.tone,
         scoreLabel: avgRisk != null ? `${avgRisk.toFixed(1)}/10` : "--",
-        stats: statsParts.join(" - "),
+        stats: summaryLabel,
         onClick: () => openHeatmapModal(sector),
         headcountInfo: {
           active: headcount,
@@ -1358,46 +1358,21 @@ function Dashboard({ isDark, onToggleTheme }) {
                     type="button"
                     onClick={item.onClick}
                     aria-label={`Ver certificados del sector ${item.sector}`}
-                className={`flex flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-white shadow-inner transition hover:scale-[1.01] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/40`}
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
-                      Sector
-                    </p>
-                    <span className="rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/90">
-                      HC: {item.headcountInfo?.active ?? "--"}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-semibold">{item.sector}</h3>
-                  <p className="text-sm opacity-90">{item.stats}</p>
-                  <div className="mt-3 rounded-2xl bg-white/15 px-3 py-2 text-left">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                      Grupo predominante
-                    </p>
-                    <p className="mt-1 text-sm font-semibold">
-                      {item.dominantGroup?.label || "Sin datos clinicos"}
-                    </p>
-                    {item.dominantGroup ? (
-                      <p className="text-[11px] opacity-90">
-                        {item.dominantGroup.count} certificado(s) -{" "}
-                        {Math.round(item.dominantGroup.days)} dias
+                    className={`flex min-h-40 flex-col justify-between rounded-3xl bg-gradient-to-br ${item.tone} p-5 text-left text-white shadow-inner transition hover:scale-[1.01] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/40`}
+                  >
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                        Sector
                       </p>
-                    ) : null}
-                  </div>
-                </div>
+                      <h3 className="text-xl font-semibold">{item.sector}</h3>
+                      <p className="text-sm opacity-90">{item.stats}</p>
+                    </div>
                     <div className="mt-6 flex items-end justify-between">
                       <div className="space-y-1">
                         <p className="text-xs font-medium uppercase tracking-wide opacity-80">
                           Estado
                         </p>
                         <p className="text-sm font-semibold">{item.status}</p>
-                        <p className="text-[11px] opacity-90">
-                          Tasa: {item.rate.toFixed(1)}%
-                        </p>
-                        <p className="text-[11px] opacity-90">
-                          Dias perdidos: {Math.round(item.daysLost)}
-                        </p>
                       </div>
                       <div className="text-right">
                         <p className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold">

@@ -221,7 +221,8 @@ describe('Funcionalidad del Dashboard', () => {
     const scoped = within(heatmapSection)
     expect(scoped.getByText(/Produccion/i)).toBeInTheDocument()
     expect(scoped.getAllByText(/alertas/i).length).toBeGreaterThan(0)
-    expect(scoped.getAllByText(/Tasa:/i).length).toBeGreaterThan(0)
+    expect(scoped.getAllByText(/ausencias/i).length).toBeGreaterThan(0)
+    expect(scoped.getAllByText(/Estado/i).length).toBeGreaterThan(0)
   })
 
   it('muestra la card de tendencia de riesgo con su descripcion', () => {
