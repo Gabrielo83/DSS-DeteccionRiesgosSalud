@@ -86,9 +86,15 @@ const saveAcknowledgedNotifications = (items) => {
   );
 };
 
-const buildCertificateDecisionNotification = (event, fallbackHref) => {
+const buildMedicalRecordHref = (employeeId, fallbackHref) =>
+  employeeId
+    ? `/legajos-medicos?employeeId=${encodeURIComponent(employeeId)}`
+    : fallbackHref;
+
+const buildCertificateDecisionNotification = (event, destinations) => {
   const status = String(event.metadata?.status || "").toLowerCase();
   const reference = event.entityId || event.metadata?.reference || "certificado";
+  const employeeId = event.metadata?.employeeId || "";
   const ackKey = `audit:${event.id}`;
   if (status.includes("rechaz")) {
     return {
@@ -98,7 +104,7 @@ const buildCertificateDecisionNotification = (event, fallbackHref) => {
       title: "Certificado rechazado",
       description: `El certificado ${reference} requiere correccion o seguimiento.`,
       meta: formatNotificationTime(event.timestamp),
-      href: fallbackHref,
+      href: destinations.registerHref,
     };
   }
   if (status.includes("revision")) {
@@ -109,7 +115,7 @@ const buildCertificateDecisionNotification = (event, fallbackHref) => {
       title: "Certificado en revision",
       description: `El certificado ${reference} quedo pendiente de evaluacion.`,
       meta: formatNotificationTime(event.timestamp),
-      href: fallbackHref,
+      href: destinations.registerHref,
     };
   }
   return {
@@ -119,7 +125,7 @@ const buildCertificateDecisionNotification = (event, fallbackHref) => {
     title: "Certificado validado",
     description: `Medicina Laboral reviso el certificado ${reference}.`,
     meta: formatNotificationTime(event.timestamp),
-    href: fallbackHref,
+    href: buildMedicalRecordHref(employeeId, destinations.medicalRecordHref),
   };
 };
 
@@ -366,11 +372,18 @@ function AppHeader({ active, isDark, onToggleTheme }) {
     const canValidate = allowedKeys.includes("validacion");
     const canRegister = allowedKeys.includes("registro");
     const canDashboard = allowedKeys.includes("dashboard");
-    const certificateDecisionHref = allowedKeys.includes("legajos")
-      ? "/legajos-medicos"
-      : canDashboard
-        ? "/dashboard"
-        : filteredNavLinks[0]?.href || "/";
+    const certificateDecisionDestinations = {
+      registerHref: canRegister
+        ? "/registro-ausencia"
+        : canDashboard
+          ? "/dashboard"
+          : filteredNavLinks[0]?.href || "/",
+      medicalRecordHref: allowedKeys.includes("legajos")
+        ? "/legajos-medicos"
+        : canDashboard
+          ? "/dashboard"
+          : filteredNavLinks[0]?.href || "/",
+    };
     const securityHref = canDashboard
       ? "/dashboard"
       : filteredNavLinks[0]?.href || "/";
@@ -435,7 +448,10 @@ function AppHeader({ active, isDark, onToggleTheme }) {
       if (acknowledgedSet.has(ackKey)) return;
       if (event.eventType === "certificate_decision") {
         items.push(
-          buildCertificateDecisionNotification(event, certificateDecisionHref),
+          buildCertificateDecisionNotification(
+            event,
+            certificateDecisionDestinations,
+          ),
         );
         return;
       }
