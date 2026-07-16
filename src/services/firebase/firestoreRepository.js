@@ -15,9 +15,18 @@ import {
 } from "../../utils/firestoreMappings.js";
 import { appendAuditLog } from "../../utils/auditLog.js";
 
+const isFirestoreFieldValue = (value) =>
+  value &&
+  typeof value === "object" &&
+  ("_methodName" in value ||
+    String(value.constructor?.name || "").includes("FieldValue"));
+
 const stripUndefined = (value) => {
   if (Array.isArray(value)) {
     return value.map(stripUndefined);
+  }
+  if (isFirestoreFieldValue(value) || value instanceof Date) {
+    return value;
   }
   if (value && typeof value === "object") {
     return Object.fromEntries(
@@ -32,6 +41,9 @@ const stripUndefined = (value) => {
 const stripTransientFileData = (value) => {
   if (Array.isArray(value)) {
     return value.map(stripTransientFileData);
+  }
+  if (isFirestoreFieldValue(value) || value instanceof Date) {
+    return value;
   }
   if (value && typeof value === "object") {
     return Object.fromEntries(

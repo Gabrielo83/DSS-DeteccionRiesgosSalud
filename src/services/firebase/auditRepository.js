@@ -1,8 +1,15 @@
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { getFirebaseServices } from "./firebaseClient.js";
 
+const isFirestoreFieldValue = (value) =>
+  value &&
+  typeof value === "object" &&
+  ("_methodName" in value ||
+    String(value.constructor?.name || "").includes("FieldValue"));
+
 const stripUndefined = (value) => {
   if (Array.isArray(value)) return value.map(stripUndefined);
+  if (isFirestoreFieldValue(value) || value instanceof Date) return value;
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
