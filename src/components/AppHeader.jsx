@@ -378,6 +378,10 @@ function AppHeader({ active, isDark, onToggleTheme }) {
       const status = (item.status || "").toLowerCase();
       return status.includes("pendiente") || status.includes("revision");
     });
+    const registerReviewWork = validationQueue.filter((item) => {
+      const status = (item.status || "").toLowerCase();
+      return status.includes("revision");
+    });
     const highPriority = validationWork.filter(
       (item) => (item.priority || "").toLowerCase() === "alta",
     );
@@ -401,6 +405,17 @@ function AppHeader({ active, isDark, onToggleTheme }) {
         description: `${validationWork.length} certificados esperan decision medica.`,
         meta: "Validacion Medica",
         href: "/validacion-medica",
+      });
+    }
+
+    if (!canValidate && canRegister && registerReviewWork.length > 0) {
+      items.push({
+        id: "certificate-revisions",
+        tone: "amber",
+        title: "Certificados para revision",
+        description: `${registerReviewWork.length} requieren correccion o seguimiento administrativo.`,
+        meta: "Registro de Ausencia",
+        href: "/registro-ausencia",
       });
     }
 
