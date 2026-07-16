@@ -909,8 +909,15 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     selectedCertificate?.institution ||
     selectedCertificate?.certificateInstitution ||
     "No indicado";
+  const modalReceptionDate = formatDateValue(selectedCertificate?.submitted);
+  const modalLastUpdate =
+    modalReceptionDate ||
+    formatDateValue(selectedCertificate?.lastDecisionAt) ||
+    formatDateValue(selectedCertificate?.issueDate) ||
+    formatDateValue(selectedCertificate?.startDate) ||
+    "No registrada";
   const modalTimelineSteps = selectedCertificate
-    ? buildTimelineSteps(selectedCertificate.status, selectedCertificate.submitted)
+    ? buildTimelineSteps(selectedCertificate.status, modalReceptionDate)
     : modalSteps;
   const modalPosition = selectedCertificate?.position || "No indicado";
   const modalBadgeTone =
@@ -929,7 +936,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
     modalDocumentMeta?.size || "Sin tamaño registrado";
   const modalDocumentUploaded =
     modalDocumentMeta?.uploadedAt ||
-    formatDateValue(selectedCertificate?.submitted) ||
+    modalReceptionDate ||
     formatDateValue(selectedCertificate?.issueDate) ||
     formatDateValue(selectedCertificate?.startDate) ||
     "Sin fecha registrada";
@@ -1321,7 +1328,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           Ultima actualizacion:{" "}
-                          {selectedCertificate.submitted || "No registrada"}
+                          {modalLastUpdate}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1360,14 +1367,16 @@ function MedicalValidation({ isDark, onToggleTheme }) {
                           {selectedCertificate.employee}
                         </dd>
                       </div>
-                      <div>
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Recepcion
-                        </dt>
-                        <dd className="mt-1 font-semibold text-slate-900 dark:text-white">
-                          {selectedCertificate.submitted || "No registrada"}
-                        </dd>
-                      </div>
+                      {modalReceptionDate ? (
+                        <div>
+                          <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Recepcion
+                          </dt>
+                          <dd className="mt-1 font-semibold text-slate-900 dark:text-white">
+                            {modalReceptionDate}
+                          </dd>
+                        </div>
+                      ) : null}
                     </dl>
                   </div>
                   <div className="rounded-3xl border border-slate-200 bg-white px-5 py-6 dark:border-slate-800 dark:bg-slate-900">
