@@ -135,6 +135,45 @@ const resolvePathologyLabel = (payload = {}) => {
   return firstSentence.trim();
 };
 
+const buildDiagnosticGroupSummary = (entries = []) => {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const label = resolvePathologyLabel(entry) || "Sin grupo informado";
+    const days =
+      entry.absenceDays ||
+      entry.days ||
+      diffDaysInclusive(entry.startDate, entry.endDate) ||
+      0;
+    const riskScore = extractScoreValue(entry.riskScoreValue ?? entry.riskScore);
+    const current = groups.get(label) || {
+      label,
+      count: 0,
+      days: 0,
+      riskTotal: 0,
+      riskCount: 0,
+    };
+    current.count += 1;
+    current.days += Number.isFinite(Number(days)) ? Number(days) : 0;
+    if (riskScore != null) {
+      current.riskTotal += riskScore;
+      current.riskCount += 1;
+    }
+    groups.set(label, current);
+  });
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      avgRisk: group.riskCount ? group.riskTotal / group.riskCount : null,
+    }))
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        b.days - a.days ||
+        (b.avgRisk ?? 0) - (a.avgRisk ?? 0),
+    );
+};
+
 const isWithinPeriod = (dateValue, start, end) => {
   if (!dateValue) return false;
   const ts = getLocalDateTimestamp(dateValue);
@@ -222,6 +261,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     isOpen: false,
     sector: "",
     items: [],
+    diagnosticGroups: [],
     validatedCount: 0,
     pendingCount: 0,
   });
@@ -486,6 +526,7 @@ function Dashboard({ isDark, onToggleTheme }) {
               entry.title ||
               "Certificado",
             source: "validado",
+            pathologyLabel: resolvePathologyLabel(entry) || "Sin grupo informado",
             riskScore: score,
             employeePeriodDaysTotal: totals?.days ?? null,
             employeePeriodCertificatesTotal: totals?.count ?? null,
@@ -520,6 +561,7 @@ function Dashboard({ isDark, onToggleTheme }) {
             null,
           type: entry.certificateType || entry.absenceType || "Certificado",
           source: "cola",
+          pathologyLabel: resolvePathologyLabel(entry) || "Sin grupo informado",
           riskScore: extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ?? null,
           employeePeriodDaysTotal:
             totalsByEmployee.get(entry.employeeId || entry.employee)?.days ?? null,
@@ -548,6 +590,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         isOpen: true,
         sector,
         items: modalItems,
+        diagnosticGroups: buildDiagnosticGroupSummary(validatedItems),
         validatedCount: validatedItems.length,
         pendingCount: queueItems.length,
       });
@@ -568,6 +611,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         isOpen: false,
         sector: "",
         items: [],
+        diagnosticGroups: [],
         validatedCount: 0,
         pendingCount: 0,
       }),
@@ -615,6 +659,8 @@ function Dashboard({ isDark, onToggleTheme }) {
       }, 0);
       const available = headcount * periodWorkingDays;
       const rate = available > 0 ? (daysLost / available) * 100 : 0;
+      const diagnosticGroups = buildDiagnosticGroupSummary(validated);
+      const dominantGroup = diagnosticGroups[0] || null;
 
       const classifyTone = () => {
         if (validated.length === 0) {
@@ -629,6 +675,12 @@ function Dashboard({ isDark, onToggleTheme }) {
         if (avgRisk != null && avgRisk >= 7) {
           return {
             status: alerts > 0 ? "Riesgo alto + alertas" : "Riesgo alto",
+            tone: "from-rose-500/90 to-amber-400/90",
+          };
+        }
+        if (dominantGroup?.count >= MIN_RECURRENT_COUNT) {
+          return {
+            status: "Recurrencia preventiva",
             tone: "from-rose-500/90 to-amber-400/90",
           };
         }
@@ -656,6 +708,9 @@ function Dashboard({ isDark, onToggleTheme }) {
         alerts,
         avgRisk,
         rate,
+        daysLost,
+        dominantGroup,
+        diagnosticGroups,
         status: toneData.status,
         tone: toneData.tone,
         scoreLabel: avgRisk != null ? `${avgRisk.toFixed(1)}/10` : "--",
@@ -1316,6 +1371,20 @@ function Dashboard({ isDark, onToggleTheme }) {
                   </div>
                   <h3 className="text-xl font-semibold">{item.sector}</h3>
                   <p className="text-sm opacity-90">{item.stats}</p>
+                  <div className="mt-3 rounded-2xl bg-white/15 px-3 py-2 text-left">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                      Grupo predominante
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {item.dominantGroup?.label || "Sin datos clinicos"}
+                    </p>
+                    {item.dominantGroup ? (
+                      <p className="text-[11px] opacity-90">
+                        {item.dominantGroup.count} certificado(s) -{" "}
+                        {Math.round(item.dominantGroup.days)} dias
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
                     <div className="mt-6 flex items-end justify-between">
                       <div className="space-y-1">
@@ -1325,6 +1394,9 @@ function Dashboard({ isDark, onToggleTheme }) {
                         <p className="text-sm font-semibold">{item.status}</p>
                         <p className="text-[11px] opacity-90">
                           Tasa: {item.rate.toFixed(1)}%
+                        </p>
+                        <p className="text-[11px] opacity-90">
+                          Dias perdidos: {Math.round(item.daysLost)}
                         </p>
                       </div>
                       <div className="text-right">
@@ -1721,7 +1793,52 @@ function Dashboard({ isDark, onToggleTheme }) {
                   No hay certificados asociados a este sector en el periodo.
                 </p>
               ) : (
-                <ul className="space-y-3">
+                <div className="space-y-4">
+                  {heatmapModal.diagnosticGroups.length ? (
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Ranking preventivo
+                          </p>
+                          <h4 className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                            Grupos diagnosticos mas frecuentes
+                          </h4>
+                        </div>
+                        {heatmapModal.diagnosticGroups[0]?.count >= MIN_RECURRENT_COUNT ? (
+                          <span className="rounded-full bg-rose-100 px-3 py-1 text-[11px] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-100">
+                            Recurrencia detectada
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {heatmapModal.diagnosticGroups.slice(0, 4).map((group) => (
+                          <div
+                            key={group.label}
+                            className="grid gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-950/70 dark:text-slate-300 sm:grid-cols-[1fr_auto]"
+                          >
+                            <div>
+                              <p className="font-semibold text-slate-900 dark:text-white">
+                                {group.label}
+                              </p>
+                              <p>
+                                {group.count} certificado(s) -{" "}
+                                {Math.round(group.days)} dias perdidos
+                              </p>
+                            </div>
+                            {group.avgRisk != null ? (
+                              <div className="flex items-center sm:justify-end">
+                                <span className="rounded-full bg-slate-200 px-2 py-1 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                                  Riesgo {group.avgRisk.toFixed(1)}
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+                  <ul className="space-y-3">
                   {heatmapModal.items.map((item) => (
                     <li
                       key={`${item.reference}-${item.source}-${item.employee}`}
@@ -1730,7 +1847,7 @@ function Dashboard({ isDark, onToggleTheme }) {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                            {item.reference} • {item.type}
+                            {item.reference} - {item.type}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
                             {item.employee}
@@ -1759,7 +1876,10 @@ function Dashboard({ isDark, onToggleTheme }) {
                             {formatDateValue(item.startDate)} - {formatDateValue(item.endDate)}
                           </span>
                         ) : null}
-                        {item.days ? <span>{item.days} días</span> : null}
+                        {item.days ? <span>{item.days} dias</span> : null}
+                        <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          {item.pathologyLabel}
+                        </span>
                         {item.employeePeriodCertificatesTotal > 1 ? (
                           <span className="rounded-full bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                             Empleado en periodo: {Math.round(item.employeePeriodDaysTotal || 0)} dias, {item.employeePeriodCertificatesTotal} certificados
@@ -1771,7 +1891,8 @@ function Dashboard({ isDark, onToggleTheme }) {
                       </div>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </div>
               )}
             </div>
           </div>
