@@ -38,9 +38,35 @@ service cloud.firestore {
       ]);
     }
 
+    function isValidUserProfile(uid) {
+      return request.resource.data.keys().hasOnly([
+          "uid",
+          "email",
+          "nombreVisible",
+          "rol",
+          "creadoEn",
+          "actualizadoEn"
+        ])
+        && request.resource.data.email is string
+        && request.resource.data.nombreVisible is string
+        && request.resource.data.rol is string
+        && request.resource.data.rol in [
+          "superAdmin",
+          "medico",
+          "administrativo",
+          "administrativoSalud",
+          "respRRHH",
+          "gerente"
+        ]
+        && (!request.resource.data.keys().hasAny(["uid"])
+          || request.resource.data.uid == uid);
+    }
+
     match /usuarios/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || hasAnyRole(["superAdmin"]));
-      allow create, update, delete: if hasAnyRole(["superAdmin"]);
+      allow create, update: if hasAnyRole(["superAdmin"])
+        && isValidUserProfile(uid);
+      allow delete: if hasAnyRole(["superAdmin"]);
     }
 
     match /empleados/{employeeId} {

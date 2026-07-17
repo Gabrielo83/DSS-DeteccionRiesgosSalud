@@ -85,6 +85,8 @@ Implementado:
 
 - Firebase Auth autentica usuarios reales en modo conectado.
 - La coleccion `usuarios` define el rol funcional.
+- Firestore no almacena contrasenas ni hashes de contrasena. Las credenciales son responsabilidad exclusiva de Firebase Auth.
+- Los documentos `usuarios/{uid}` se limitan por reglas a UID, email, nombre visible, rol y marcas de tiempo.
 - El login local se conserva para contingencia y pruebas.
 - Auditoria registra login exitoso/fallido, usuario sin rol, accesos denegados y expiracion de sesion.
 - Sesion local expira por inactividad luego de 20 minutos.
