@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { calculateRiskScoreWithConfig } from "./riskEngine.js";
 
@@ -8,6 +10,134 @@ initializeApp();
 
 const db = getFirestore();
 const RISK_ENGINE_VERSION = "risk-engine-v2";
+
+const requireSuperAdmin = async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Debes iniciar sesion.");
+  }
+
+  const callerSnapshot = await db.doc(`usuarios/${callerUid}`).get();
+  if (!callerSnapshot.exists || callerSnapshot.data()?.rol !== "superAdmin") {
+    throw new HttpsError(
+      "permission-denied",
+      "Solo un superAdmin puede actualizar correos de usuarios.",
+    );
+  }
+
+  return callerSnapshot.data();
+};
+
+export const actualizarCorreoUsuario = onCall(
+  { region: "us-east1" },
+  async (request) => {
+    await requireSuperAdmin(request);
+
+    const uid = String(request.data?.uid || "").trim();
+    const nuevoEmail = String(request.data?.nuevoEmail || "")
+      .trim()
+      .toLowerCase();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!uid || !emailPattern.test(nuevoEmail)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Debes indicar un UID y un correo valido.",
+      );
+    }
+
+    const profileRef = db.doc(`usuarios/${uid}`);
+    const [profileSnapshot, userRecord] = await Promise.all([
+      profileRef.get(),
+      getAuth().getUser(uid),
+    ]);
+
+    if (!profileSnapshot.exists) {
+      throw new HttpsError(
+        "not-found",
+        "El usuario no tiene un perfil funcional en Firestore.",
+      );
+    }
+
+    const correoAnterior = userRecord.email || "";
+    if (correoAnterior.toLowerCase() === nuevoEmail) {
+      return { uid, email: nuevoEmail, sinCambios: true };
+    }
+
+    try {
+      await getAuth().updateUser(uid, {
+        email: nuevoEmail,
+        emailVerified: false,
+      });
+
+      try {
+        await profileRef.set(
+          {
+            email: nuevoEmail,
+            actualizadoEn: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      } catch (firestoreError) {
+        if (correoAnterior) {
+          await getAuth()
+            .updateUser(uid, {
+              email: correoAnterior,
+              emailVerified: userRecord.emailVerified,
+            })
+            .catch((rollbackError) => {
+              logger.error("No se pudo revertir el correo en Authentication.", {
+                uid,
+                rollbackError,
+              });
+            });
+        }
+        throw firestoreError;
+      }
+    } catch (error) {
+      logger.error("No se pudo actualizar el correo del usuario.", {
+        uid,
+        error,
+      });
+      if (error?.code === "auth/email-already-exists") {
+        throw new HttpsError(
+          "already-exists",
+          "El correo ya pertenece a otro usuario.",
+        );
+      }
+      throw new HttpsError("internal", "No se pudo actualizar el correo.");
+    }
+
+    await db
+      .collection("auditoria")
+      .add({
+        eventType: "usuario_correo_actualizado_backend",
+        entityId: uid,
+        user: request.auth?.token?.email || request.auth.uid,
+        role: "superAdmin",
+        metadata: {
+          correoAnterior,
+          correoNuevo: nuevoEmail,
+        },
+        creadoEn: FieldValue.serverTimestamp(),
+        timestamp: FieldValue.serverTimestamp(),
+      })
+      .catch((auditError) => {
+        logger.error("No se pudo auditar el cambio de correo.", {
+          uid,
+          auditError,
+        });
+      });
+
+    logger.info("Correo de usuario actualizado.", {
+      uid,
+      nuevoEmail,
+      callerUid: request.auth.uid,
+    });
+
+    return { uid, email: nuevoEmail, sinCambios: false };
+  },
+);
 
 const toDate = (value) => {
   if (!value) return null;
