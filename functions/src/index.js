@@ -34,6 +34,22 @@ const requireSuperAdmin = async (request) => {
   return callerSnapshot.data();
 };
 
+const requireEnabledUser = async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Debes iniciar sesion.");
+  }
+  const callerSnapshot = await db.doc(`usuarios/${callerUid}`).get();
+  const caller = callerSnapshot.exists ? callerSnapshot.data() : null;
+  if (!caller?.rol) {
+    throw new HttpsError(
+      "permission-denied",
+      "El usuario no tiene un rol habilitado.",
+    );
+  }
+  return caller;
+};
+
 export const actualizarCorreoUsuario = onCall(
   { region: "us-east1" },
   async (request) => {
@@ -666,13 +682,13 @@ export const actualizarIndicadoresAlertas = onDocumentWritten(
 export const reconstruirIndicadoresAlertas = onCall(
   { region: "us-east1" },
   async (request) => {
-    await requireSuperAdmin(request);
+    const caller = await requireEnabledUser(request);
     const summary = await rebuildAlertSummary();
     await db.collection("auditoria").add({
       eventType: "indicadores_alertas_reconstruidos_backend",
       entityId: "global",
       user: request.auth?.token?.email || request.auth.uid,
-      role: "superAdmin",
+      role: caller.rol,
       metadata: { totalActivas: summary.totalActivas },
       creadoEn: FieldValue.serverTimestamp(),
       timestamp: FieldValue.serverTimestamp(),

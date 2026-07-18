@@ -278,7 +278,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     ]);
 
   let indicadorAlertas = indicadorAlertasInicial;
-  if (!indicadorAlertas && role === "superAdmin") {
+  if (!indicadorAlertas) {
     indicadorAlertas = await fetchOrFallback(
       rebuildFirebaseAlertSummary,
       null,

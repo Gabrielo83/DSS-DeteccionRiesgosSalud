@@ -416,7 +416,7 @@ Integracion visual completada en la etapa 3.5:
 - La tarjeta `Alertas Activas` y el mapa de calor contabilizan alertas consolidadas, no certificados pendientes.
 - El modal sectorial reutiliza el diseno existente y explica motivo, recurrencias, ventana, riesgo maximo y referencias.
 - Los roles clinicos leen el detalle de `alertas_riesgo`; RRHH y Gerencia leen solo `indicadores_alertas/global`.
-- `actualizarIndicadoresAlertas` mantiene la proyeccion agregada sin datos personales y `reconstruirIndicadoresAlertas` permite inicializarla de forma controlada por `superAdmin`.
+- `actualizarIndicadoresAlertas` mantiene la proyeccion agregada sin datos personales y `reconstruirIndicadoresAlertas` permite inicializarla a usuarios autenticados con rol habilitado cuando todavia no existe.
 - Firestore actualiza ambos componentes mediante listeners en tiempo real, sin recargar la pagina.
 - El modo local deriva alertas equivalentes desde el historial validado sin exponer el origen de datos en la interfaz.
 - No se cambiaron colores, estructura, tipografia ni navegacion del frontend validado.

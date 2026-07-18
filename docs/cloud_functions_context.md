@@ -97,7 +97,7 @@ Implementacion:
 - Los roles clinicos se suscriben a `alertas_riesgo` y reciben detalle explicable.
 - Todos los usuarios autenticados pueden leer `indicadores_alertas/global`, que contiene solo cantidades por sector y motivo.
 - `actualizarIndicadoresAlertas` recalcula la proyeccion agregada ante cada cambio de alerta.
-- `reconstruirIndicadoresAlertas` inicializa la proyeccion existente y exige rol `superAdmin`.
+- `reconstruirIndicadoresAlertas` inicializa la proyeccion cuando falta; exige autenticacion y un rol habilitado, y solo devuelve el resumen sanitizado.
 - La tarjeta de alertas y el mapa de calor usan alertas activas consolidadas.
 - El modal sectorial muestra evidencia solo a roles clinicos.
 - El modo local aplica la misma regla sobre el historial validado.
