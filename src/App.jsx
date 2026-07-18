@@ -60,6 +60,16 @@ const isStoredSessionExpired = () => {
   return Date.now() - raw > SESSION_TIMEOUT_MS;
 };
 
+const AuthRestoreScreen = () => (
+  <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-blue-100 to-slate-200 transition dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
+    <span
+      role="status"
+      aria-label="Restaurando sesion"
+      className="h-8 w-8 animate-spin rounded-full border-2 border-slate-400/40 border-t-slate-900 dark:border-slate-500/40 dark:border-t-slate-100"
+    />
+  </div>
+);
+
 function App() {
   const isFirebaseEnabled = isFirebaseProvider();
   const initialUser =
@@ -239,7 +249,7 @@ function App() {
 
   const ProtectedRoute = ({ children, allowedRoles }) => {
     if (!isAuthReady) {
-      return <Navigate to="/" replace />;
+      return <AuthRestoreScreen />;
     }
     if (!isAuthenticated) {
       return <Navigate to="/" replace />;

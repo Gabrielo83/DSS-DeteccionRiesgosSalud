@@ -1368,7 +1368,7 @@ const clearCertificateFile = () => {
               >
                 <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900/40 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-slate-600 dark:text-slate-300">
-                    Se muestran los registros mas recientes para carga rapida.
+                    Se muestran los registros mas recientes.
                   </p>
                   <a
                     href={`/legajos-medicos?employeeId=${encodeURIComponent(formValues.employeeId)}`}
