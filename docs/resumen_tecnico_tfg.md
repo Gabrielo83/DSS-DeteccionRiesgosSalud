@@ -374,18 +374,24 @@ Etapas:
 
 1. Etapa 1 - Function inicial y auditoria backend: completada.
 2. Etapa 2 - Motor de riesgo backend con patologias, parametros y recurrencia: completada.
-3. Etapa 2.5 - Migrar runtime Node 20 a Node 22: pendiente.
+3. Etapa 2.5 - Migrar runtime Node 20 a Node 22: completada.
 4. Etapa 3 - Alertas consolidadas backend: pendiente.
 5. Etapa 4 - Documentacion tecnica para defensa: en progreso.
 6. Etapa 5 - Validacion final y merge: pendiente.
 
-Pendiente Node 22:
+Migracion Node 22 completada el 18/07/2026:
 
-- `functions/package.json` usa Node 20.
-- Firebase aviso que Node 20 esta deprecado desde 2026-04-30 y sera retirado el 2026-10-30.
-- Migrar a Node 22.
-- Actualizar `firebase-functions` si corresponde.
-- Volver a ejecutar:
+- `functions/package.json` declara Node 22.
+- `firebase-functions` actualizado a `7.3.0`.
+- `firebase-admin` actualizado a `14.2.0`.
+- Sintaxis e importacion de ambas Functions verificadas con Node `22.23.1`.
+- Deploy realizado con Firebase CLI `15.23.0`.
+- `actualizarCorreoUsuario` y `recalcularRiesgoValidacionMedica` quedaron `ACTIVE`, `gcfv2`, `nodejs22`, en `us-east1`.
+- Prueba remota no destructiva de la callable: respondio `HTTP 401 / UNAUTHENTICATED` ante una solicitud anonima, confirmando disponibilidad y control de acceso.
+- Regresion local: lint de Functions correcto, lint general correcto y 55 pruebas aprobadas.
+- `npm audit --omit=dev` informa siete hallazgos moderados transitivos y ninguno alto o critico. No se aplico la solucion automatica porque propone degradar los SDK principales a versiones incompatibles; queda como riesgo residual monitoreado.
+
+Comandos de verificacion:
 
 ```bash
 npm --prefix functions run lint
@@ -474,9 +480,9 @@ Agregar aqui cualquier decision tomada fuera de este chat:
   - Pantallas que consumen:
 
 - Node 22:
-  - Fecha de migracion:
-  - Resultado deploy:
-  - Warnings remanentes:
+  - Fecha de migracion: 18/07/2026.
+  - Resultado deploy: ambas Functions activas en `nodejs22`, segunda generacion.
+  - Warnings remanentes: siete vulnerabilidades moderadas transitivas reportadas por npm; cero altas y cero criticas.
 
 ## Frases de defensa rapida
 
