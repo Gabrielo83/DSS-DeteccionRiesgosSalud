@@ -164,6 +164,22 @@ sincroniza e hidrata datos contra estas colecciones.
 - localCreatedAt
 - syncedAt
 
+12) `alertas_riesgo/{employeeId__grupoPatologia}`
+- alertaId (identificador estable por empleado y grupo)
+- employeeId, nombreCompleto
+- sector, puesto
+- grupoPatologia
+- tipo (`riesgo_consolidado`)
+- estado (`activa` | `resuelta`)
+- severidad (`alta`)
+- motivos[] (`recurrencia_diagnostica` | `riesgo_alto`)
+- recurrencias, ventanaMeses
+- riesgoMaximo, riesgoIndividualMaximo
+- referencias[]
+- ultimaReferencia, ultimaFecha
+- origen (`cloud-functions`), version
+- creadoEn, activadoEn, actualizadoEn, resueltoEn
+
 Notas
 - Usar reference como docId en validaciones_medicas y historial_medico para evitar duplicados.
 - Storage de certificados: `certificados/{reference}/{timestamp}-{filename}`.
@@ -171,6 +187,7 @@ Notas
 - `operations` es bitacora tecnica de sincronizacion; el dato funcional vive en colecciones de dominio.
 - Las reglas de Storage aceptan solo PDF/JPG/PNG de hasta 5 MB.
 - Las reglas de Firestore limitan datos clinicos a `superAdmin`, `medico` y `administrativoSalud`.
+- `alertas_riesgo` es de solo lectura para roles clinicos; solo Cloud Functions escribe o resuelve alertas.
 
 ## Diagrama (Mermaid)
 
@@ -294,11 +311,26 @@ erDiagram
     number factorRecurrencia
   }
 
+  ALERTAS_RIESGO {
+    string alertaId
+    string employeeId
+    string grupoPatologia
+    string estado
+    string severidad
+    number recurrencias
+    number ventanaMeses
+    number riesgoMaximo
+    string ultimaReferencia
+    timestamp actualizadoEn
+  }
+
   EMPLEADOS ||--o{ AUSENCIAS : tiene
   EMPLEADOS ||--o{ VALIDACIONES_MEDICAS : encola
   EMPLEADOS ||--o{ HISTORIAL_MEDICO : historial
   EMPLEADOS ||--o{ BORRADORES : borradores
   EMPLEADOS ||--|| PLANES_PREVENTIVOS : plan
+  EMPLEADOS ||--o{ ALERTAS_RIESGO : consolida
+  VALIDACIONES_MEDICAS }o--o{ ALERTAS_RIESGO : evidencia
   USUARIOS ||--o{ AUSENCIAS : crea
   USUARIOS ||--o{ VALIDACIONES_MEDICAS : revisa
 ```

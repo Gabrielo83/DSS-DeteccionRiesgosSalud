@@ -5,11 +5,16 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { calculateRiskScoreWithConfig } from "./riskEngine.js";
+import {
+  buildAlertId,
+  evaluateConsolidatedAlert,
+} from "./alertEngine.js";
 
 initializeApp();
 
 const db = getFirestore();
 const RISK_ENGINE_VERSION = "risk-engine-v2";
+const ALERT_ENGINE_VERSION = "alert-engine-v1";
 
 const requireSuperAdmin = async (request) => {
   const callerUid = request.auth?.uid;
@@ -418,6 +423,212 @@ export const recalcularRiesgoValidacionMedica = onDocumentWritten(
       riskScore: riskAssessment.score,
       riskLevel: riskAssessment.level,
       occurrenceCount: riskInput.occurrenceCount,
+    });
+  },
+);
+
+const resolveAlertPair = (validation = {}) => {
+  const employeeId = String(validation.employeeId || "").trim();
+  const pathologyGroup = String(validation.grupoPatologia || "").trim();
+  return employeeId && pathologyGroup
+    ? { employeeId, pathologyGroup }
+    : null;
+};
+
+const alertSignature = (alert = {}) =>
+  JSON.stringify({
+    estado: alert.estado || "",
+    motivos: alert.motivos || [],
+    recurrencias: Number(alert.recurrencias || 0),
+    riesgoMaximo: Number(alert.riesgoMaximo || 0),
+    riesgoIndividualMaximo: Number(alert.riesgoIndividualMaximo || 0),
+    referencias: alert.referencias || [],
+    ultimaReferencia: alert.ultimaReferencia || "",
+    ultimaFecha: alert.ultimaFecha || "",
+    ventanaMeses: Number(alert.ventanaMeses || 0),
+    version: alert.version || "",
+  });
+
+const auditAlertTransition = (
+  transaction,
+  eventId,
+  alertId,
+  eventType,
+  alert,
+) => {
+  const safeEventId = String(eventId || Date.now()).replace(
+    /[^a-zA-Z0-9_-]/g,
+    "-",
+  );
+  const auditRef = db.collection("auditoria").doc(`${safeEventId}_${alertId}`);
+  transaction.set(auditRef, {
+    id: auditRef.id,
+    eventType,
+    evento: eventType,
+    entityId: alertId,
+    referencia: alert.ultimaReferencia || "",
+    employeeId: alert.employeeId,
+    nombreCompleto: alert.nombreCompleto || "",
+    user: "cloud-functions",
+    role: "backend",
+    origen: "cloud-functions",
+    metadata: {
+      estado: alert.estado,
+      grupoPatologia: alert.grupoPatologia,
+      motivos: alert.motivos,
+      recurrencias: alert.recurrencias,
+      riesgoMaximo: alert.riesgoMaximo,
+      riesgoIndividualMaximo: alert.riesgoIndividualMaximo,
+      referencias: alert.referencias,
+      ventanaMeses: alert.ventanaMeses,
+      version: ALERT_ENGINE_VERSION,
+    },
+    creadoEn: FieldValue.serverTimestamp(),
+    timestamp: FieldValue.serverTimestamp(),
+  });
+};
+
+const consolidateRiskAlert = async (pair, riskConfig, eventId) => {
+  const snapshot = await db
+    .collection("validaciones_medicas")
+    .where("employeeId", "==", pair.employeeId)
+    .where("grupoPatologia", "==", pair.pathologyGroup)
+    .get();
+  const occurrences = snapshot.docs.map((doc) => {
+    const validation = doc.data();
+    const absenceDays =
+      Number(validation.dias) ||
+      diffDaysInclusive(validation.fechaInicio, validation.fechaFin) ||
+      0;
+    const individualRisk = calculateRiskScoreWithConfig(
+      {
+        absenceType: validation.tipo || validation.tipoCertificado || "",
+        detailedReason:
+          validation.diagnostico || validation.notasMedicas || "",
+        pathologyCategory: validation.grupoPatologia || "",
+        durationDays: absenceDays,
+        occurrenceCount: 1,
+      },
+      riskConfig,
+    );
+    return {
+      id: doc.id,
+      ...validation,
+      riesgoIndividualPuntaje: individualRisk.score,
+    };
+  });
+  const assessment = evaluateConsolidatedAlert(
+    occurrences,
+    riskConfig.parameters,
+  );
+  const alertId = buildAlertId(pair.employeeId, pair.pathologyGroup);
+  const alertRef = db.collection("alertas_riesgo").doc(alertId);
+  const latestOccurrence =
+    occurrences.find(
+      (item) => (item.reference || item.id) === assessment.latestReference,
+    ) || occurrences.at(-1) || {};
+
+  await db.runTransaction(async (transaction) => {
+    const alertSnapshot = await transaction.get(alertRef);
+    const currentAlert = alertSnapshot.exists ? alertSnapshot.data() : null;
+
+    if (!assessment.active && !currentAlert) return;
+    if (!assessment.active && currentAlert?.estado !== "activa") return;
+
+    const state = assessment.active ? "activa" : "resuelta";
+    const alert = {
+      alertaId: alertId,
+      employeeId: pair.employeeId,
+      nombreCompleto:
+        latestOccurrence.nombreCompleto || currentAlert?.nombreCompleto || "",
+      sector: latestOccurrence.sector || currentAlert?.sector || "",
+      puesto: latestOccurrence.puesto || currentAlert?.puesto || "",
+      grupoPatologia: pair.pathologyGroup,
+      tipo: "riesgo_consolidado",
+      estado: state,
+      severidad: assessment.active ? "alta" : currentAlert?.severidad || "alta",
+      motivos: assessment.reasons,
+      recurrencias: assessment.occurrenceCount,
+      ventanaMeses: assessment.reviewPeriodMonths,
+      riesgoMaximo: assessment.maxRiskScore,
+      riesgoIndividualMaximo: assessment.maxIndividualRiskScore,
+      referencias: assessment.references,
+      ultimaReferencia: assessment.latestReference,
+      ultimaFecha: assessment.latestDate,
+      origen: "cloud-functions",
+      version: ALERT_ENGINE_VERSION,
+    };
+
+    if (currentAlert && alertSignature(currentAlert) === alertSignature(alert)) {
+      return;
+    }
+
+    const transition = !currentAlert
+      ? "alerta_riesgo_activada_backend"
+      : state === "resuelta"
+        ? "alerta_riesgo_resuelta_backend"
+        : currentAlert.estado === "resuelta"
+          ? "alerta_riesgo_activada_backend"
+          : "alerta_riesgo_actualizada_backend";
+    const timestamps = {
+      actualizadoEn: FieldValue.serverTimestamp(),
+      ...(alertSnapshot.exists
+        ? {}
+        : { creadoEn: FieldValue.serverTimestamp() }),
+      ...(state === "activa"
+        ? {
+            ...(currentAlert?.estado === "activa"
+              ? {}
+              : { activadoEn: FieldValue.serverTimestamp() }),
+            resueltoEn: null,
+          }
+        : { resueltoEn: FieldValue.serverTimestamp() }),
+    };
+
+    transaction.set(alertRef, { ...alert, ...timestamps }, { merge: true });
+    auditAlertTransition(
+      transaction,
+      eventId,
+      alertId,
+      transition,
+      alert,
+    );
+  });
+};
+
+export const consolidarAlertasRiesgo = onDocumentWritten(
+  {
+    document: "validaciones_medicas/{reference}",
+    region: "us-east1",
+  },
+  async (event) => {
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    const pairs = [resolveAlertPair(before), resolveAlertPair(after)].filter(
+      Boolean,
+    );
+    const uniquePairs = [
+      ...new Map(
+        pairs.map((pair) => [
+          buildAlertId(pair.employeeId, pair.pathologyGroup),
+          pair,
+        ]),
+      ).values(),
+    ];
+
+    if (!uniquePairs.length) return;
+
+    const riskConfig = await loadRiskConfig();
+
+    await Promise.all(
+      uniquePairs.map((pair) =>
+        consolidateRiskAlert(pair, riskConfig, event.id),
+      ),
+    );
+
+    logger.info("Alertas de riesgo consolidadas.", {
+      reference: event.params.reference,
+      pairs: uniquePairs.length,
     });
   },
 );

@@ -46,16 +46,29 @@ npm run build:firebase
 npm run deploy:firebase:functions
 ```
 
-## Siguiente etapa sugerida
+## Etapa 3: alertas consolidadas
 
-Agregar Function para recurrencias y alertas consolidadas:
+Se agrego `consolidarAlertasRiesgo`, con trigger sobre:
 
 ```txt
-historial_medico/{reference}
+validaciones_medicas/{reference}
 ```
 
-Objetivo:
+Comportamiento:
 
-- Detectar 3 eventos del mismo grupo diagnostico en ventana movil.
-- Crear o actualizar `alertas_riesgo`.
-- Registrar auditoria backend.
+- Agrupa certificados validados por empleado y grupo diagnostico.
+- Usa la ventana movil configurada en `parametros_riesgo/global`.
+- Activa una alerta al alcanzar `recurrenciasAlta` o el umbral de riesgo alto.
+- Evalua el riesgo individual sin el bono de recurrencia para no duplicar motivos ni impedir una resolucion posterior.
+- Mantiene un documento estable por empleado y grupo en `alertas_riesgo`.
+- Actualiza la evidencia sin duplicar alertas y resuelve el documento cuando deja de cumplirse la condicion.
+- Audita activacion, actualizacion y resolucion desde backend.
+- Las reglas permiten lectura clinica y bloquean toda escritura desde clientes.
+
+Eventos de auditoria:
+
+- `alerta_riesgo_activada_backend`
+- `alerta_riesgo_actualizada_backend`
+- `alerta_riesgo_resuelta_backend`
+
+La alerta es una senal preventiva y trazable. No reemplaza la validacion ni el diagnostico profesional.

@@ -375,7 +375,7 @@ Etapas:
 1. Etapa 1 - Function inicial y auditoria backend: completada.
 2. Etapa 2 - Motor de riesgo backend con patologias, parametros y recurrencia: completada.
 3. Etapa 2.5 - Migrar runtime Node 20 a Node 22: completada.
-4. Etapa 3 - Alertas consolidadas backend: pendiente.
+4. Etapa 3 - Alertas consolidadas backend: implementada; pendiente de validacion remota controlada.
 5. Etapa 4 - Documentacion tecnica para defensa: en progreso.
 6. Etapa 5 - Validacion final y merge: pendiente.
 
@@ -390,6 +390,18 @@ Migracion Node 22 completada el 18/07/2026:
 - Prueba remota no destructiva de la callable: respondio `HTTP 401 / UNAUTHENTICATED` ante una solicitud anonima, confirmando disponibilidad y control de acceso.
 - Regresion local: lint de Functions correcto, lint general correcto y 55 pruebas aprobadas.
 - `npm audit --omit=dev` informa siete hallazgos moderados transitivos y ninguno alto o critico. No se aplico la solucion automatica porque propone degradar los SDK principales a versiones incompatibles; queda como riesgo residual monitoreado.
+
+Alertas consolidadas implementadas el 18/07/2026:
+
+- `consolidarAlertasRiesgo` observa cambios en `validaciones_medicas`.
+- Consolida por empleado y grupo diagnostico en una ventana movil configurable.
+- Activa por tres recurrencias configurables o por riesgo alto validado.
+- Separa el riesgo individual del bono por recurrencia para evitar alertas residuales incorrectas.
+- Usa un ID estable en `alertas_riesgo`, evitando duplicados.
+- Actualiza evidencia y resuelve automaticamente cuando deja de cumplirse la condicion.
+- Registra transiciones en `auditoria` con origen `cloud-functions`.
+- Los clientes clinicos pueden leer alertas, pero no crearlas, modificarlas ni eliminarlas.
+- No se modifico el frontend en esta etapa; su consumo se evaluara por separado para no alterar la interfaz validada del TFG.
 
 Comandos de verificacion:
 
@@ -475,9 +487,9 @@ Agregar aqui cualquier decision tomada fuera de este chat:
   - Se documenta como evolucion:
 
 - Alertas backend:
-  - Coleccion elegida:
-  - Campos:
-  - Pantallas que consumen:
+  - Coleccion elegida: `alertas_riesgo`.
+  - Campos: empleado, grupo, estado, motivos, recurrencias, ventana, riesgo maximo, referencias y timestamps de ciclo de vida.
+  - Pantallas que consumen: pendiente de decision explicita; la etapa 3 no cambia el frontend validado.
 
 - Node 22:
   - Fecha de migracion: 18/07/2026.

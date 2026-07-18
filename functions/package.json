@@ -7,7 +7,8 @@
   },
   "main": "src/index.js",
   "scripts": {
-    "lint": "node --check src/index.js && node --check src/riskEngine.js",
+    "lint": "node --check src/index.js && node --check src/riskEngine.js && node --check src/alertEngine.js && node --check test/alertEngine.test.js",
+    "test": "node --test",
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions"
   },
