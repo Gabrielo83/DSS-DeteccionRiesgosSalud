@@ -88,8 +88,11 @@ Implementado:
 - Firestore no almacena contrasenas ni hashes de contrasena. Las credenciales son responsabilidad exclusiva de Firebase Auth.
 - Los documentos `usuarios/{uid}` se limitan por reglas a UID, email, nombre visible, rol y marcas de tiempo.
 - Cloud Function callable `actualizarCorreoUsuario`: permite al `superAdmin` migrar un correo ficticio a uno accesible conservando el UID, sincroniza Authentication y Firestore, revierte Authentication ante fallo de persistencia y registra auditoria.
+- La cuenta de ejecucion de esa funcion posee el rol IAM minimo `Firebase Authentication Admin` (`roles/firebaseauth.admin`) para consultar y actualizar usuarios de Firebase Auth.
+- Flujo de migracion validado de punta a punta: cambio de correo manteniendo UID y rol, sincronizacion entre Authentication y `usuarios/{uid}`, recepcion del correo de restablecimiento, cambio de contrasena e inicio de sesion con el nuevo correo y la nueva credencial.
 - El login local se conserva para contingencia y pruebas.
 - Auditoria registra login exitoso/fallido, usuario sin rol, accesos denegados y expiracion de sesion.
+- Los eventos anteriores a la autenticacion, como credenciales invalidas, se conservan localmente y no intentan escribir anonimamente en Firestore; la evidencia remota de Firebase Auth se consulta en Cloud Logging.
 - Sesion local expira por inactividad luego de 20 minutos.
 - Modulo reutilizable de politica de contrasena para alta o restablecimiento.
 - Bloqueo temporal local luego de 5 intentos fallidos por usuario.

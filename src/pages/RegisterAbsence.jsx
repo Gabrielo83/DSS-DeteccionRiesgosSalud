@@ -140,9 +140,11 @@ function SectionCard({ title, description, icon, children }) {
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             {title}
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            {description}
-          </p>
+          {description ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {description}
+            </p>
+          ) : null}
         </div>
       </header>
       {children}
@@ -403,7 +405,13 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
         source: "Historico",
       }));
 
-    return [...pendingItems, ...historyItems]
+    const uniqueCertificates = new Map();
+    [...pendingItems, ...historyItems].forEach((item) => {
+      const key = String(item.reference || item.id || "").trim().toLowerCase();
+      if (key) uniqueCertificates.set(key, item);
+    });
+
+    return [...uniqueCertificates.values()]
       .filter((item) => item.id || item.reference)
       .sort((a, b) => {
         const aTime = parseLocalDate(a.startDate)?.getTime() || 0;
@@ -1356,7 +1364,6 @@ const clearCertificateFile = () => {
             {formValues.employeeId ? (
               <SectionCard
                 title="Certificados recientes del colaborador"
-                description="Consulta previa para evitar cargas duplicadas"
                 icon={sectionIcons.certificate}
               >
                 <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900/40 sm:flex-row sm:items-center sm:justify-between">
@@ -1407,9 +1414,6 @@ const clearCertificateFile = () => {
                         </div>
                       </div>
                     ))}
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      Si el nuevo periodo se superpone con uno existente, el sistema mostrara una advertencia antes del envio.
-                    </p>
                   </div>
                 )}
               </SectionCard>

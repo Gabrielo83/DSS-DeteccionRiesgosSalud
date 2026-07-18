@@ -21,8 +21,13 @@ const stripUndefined = (value) => {
 };
 
 export const writeAuditEvent = async (event) => {
-  if (!event?.id) return;
-  const { db } = getFirebaseServices();
+  if (!event?.id) return false;
+  const { auth, db } = getFirebaseServices();
+
+  // Firestore no admite auditoria anonima. Los fallos previos al login
+  // permanecen en el registro local y Firebase Auth/Cloud Logging.
+  if (!auth.currentUser) return false;
+
   await setDoc(
     doc(db, "auditoria", event.id),
     stripUndefined({
@@ -31,4 +36,5 @@ export const writeAuditEvent = async (event) => {
     }),
     { merge: false },
   );
+  return true;
 };

@@ -761,7 +761,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         badgeVariant: "info",
         primaryLabel: "Dias perdidos",
         primaryValue: totalDaysLost,
-        secondaryLabel: "Dias laborables x headcount",
+        secondaryLabel: "Dias Trabajados",
         secondaryValue: availableDays,
       },
       {
