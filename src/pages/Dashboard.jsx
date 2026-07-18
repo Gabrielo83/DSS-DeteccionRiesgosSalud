@@ -18,6 +18,7 @@ import {
   PREVENTIVE_PLANS_UPDATED_EVENT,
   RISK_CONFIG_UPDATED_EVENT,
   RISK_ALERTS_UPDATED_EVENT,
+  RISK_INDICATOR_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { readAllPlans } from "../utils/planStorage.js";
 import {
@@ -29,6 +30,7 @@ import {
   readRiskAlertSummary,
 } from "../utils/riskAlertStorage.js";
 import { isFirebaseProvider } from "../services/appMode.js";
+import { readRiskIndicator } from "../utils/riskIndicatorStorage.js";
 
 const levelToneMap = {
   Alta: "bg-rose-100 text-rose-700",
@@ -330,6 +332,9 @@ function Dashboard({ isDark, onToggleTheme }) {
   const [riskAlertSummary, setRiskAlertSummary] = useState(() =>
     typeof window === "undefined" ? null : readRiskAlertSummary(),
   );
+  const [riskIndicator, setRiskIndicator] = useState(() =>
+    typeof window === "undefined" ? null : readRiskIndicator(),
+  );
   const today = useMemo(() => new Date(), []);
   const [periodMonth, setPeriodMonth] = useState(today.getMonth());
   const [periodYear, setPeriodYear] = useState(today.getFullYear());
@@ -349,6 +354,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     pendingCount: 0,
     alerts: [],
     headcount: 0,
+    aggregateMetrics: null,
   });
   const [planModal, setPlanModal] = useState({
     isOpen: false,
@@ -449,6 +455,26 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
   }, [allHistoryEntries, periodRange]);
 
+  const useAggregatedRisk = firebaseMode && !canReadAlertDetail;
+  const selectedPeriodKey = `${periodYear}-${String(periodMonth + 1).padStart(2, "0")}`;
+  const selectedRiskPeriod = useMemo(
+    () =>
+      riskIndicator?.periods?.find(
+        (period) => period.period === selectedPeriodKey,
+      ) || null,
+    [riskIndicator, selectedPeriodKey],
+  );
+  const aggregateSectorMetrics = useMemo(
+    () =>
+      new Map(
+        (selectedRiskPeriod?.sectors || []).map((sector) => [
+          sector.sector,
+          sector,
+        ]),
+      ),
+    [selectedRiskPeriod],
+  );
+
   const effectiveRiskAlerts = useMemo(
     () =>
       (firebaseMode ? riskAlerts : buildLocalRiskAlerts(allHistoryEntries)).filter(
@@ -489,6 +515,7 @@ function Dashboard({ isDark, onToggleTheme }) {
   }, [effectiveRiskAlerts, firebaseMode, riskAlertSummary]);
 
   const riskAverage = useMemo(() => {
+    if (useAggregatedRisk) return selectedRiskPeriod?.averageRisk ?? null;
     if (!filteredValidated.length) return null;
     const scores = filteredValidated
       .map((item) => extractScoreValue(item.riskScoreValue ?? item.riskScore))
@@ -496,7 +523,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     if (!scores.length) return null;
     const avg = scores.reduce((sum, val) => sum + val, 0) / scores.length;
     return avg;
-  }, [filteredValidated]);
+  }, [filteredValidated, selectedRiskPeriod, useAggregatedRisk]);
 
   const openHeatmapModal = useCallback(
     (sector) => {
@@ -695,6 +722,9 @@ function Dashboard({ isDark, onToggleTheme }) {
         pendingCount: queueItems.length,
         alerts: alertItems,
         headcount: headcountBySector.get(sector) || 0,
+        aggregateMetrics: useAggregatedRisk
+          ? aggregateSectorMetrics.get(sector) || null
+          : null,
       });
     },
     [
@@ -706,6 +736,8 @@ function Dashboard({ isDark, onToggleTheme }) {
       periodRange,
       canReadAlertDetail,
       effectiveRiskAlerts,
+      aggregateSectorMetrics,
+      useAggregatedRisk,
     ],
   );
 
@@ -720,6 +752,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         pendingCount: 0,
         alerts: [],
         headcount: 0,
+        aggregateMetrics: null,
       }),
     [],
   );
@@ -729,14 +762,21 @@ function Dashboard({ isDark, onToggleTheme }) {
       ...headcountBySector.keys(),
       ...validatedBySector.keys(),
       ...alertsBySector.keys(),
+      ...aggregateSectorMetrics.keys(),
     ]);
 
     const items = Array.from(sectors).map((sector) => {
       const headcount = headcountBySector.get(sector) || 0;
       const validated = validatedBySector.get(sector) || [];
+      const aggregate = aggregateSectorMetrics.get(sector) || null;
+      const validatedCount = useAggregatedRisk
+        ? aggregate?.certificateCount || 0
+        : validated.length;
       const alerts = alertsBySector.get(sector) || 0;
       const avgRisk =
-        validated.length > 0
+        useAggregatedRisk
+          ? aggregate?.averageRisk ?? null
+          : validated.length > 0
           ? validated.reduce((sum, entry) => {
               const manual =
                 extractScoreValue(entry.riskScoreValue ?? entry.riskScore);
@@ -758,18 +798,20 @@ function Dashboard({ isDark, onToggleTheme }) {
               return sum + (computed?.score ?? 0);
             }, 0) / validated.length
           : null;
-      const daysLost = validated.reduce((sum, entry) => {
-        if (entry.absenceDays) return sum + entry.absenceDays;
-        if (entry.days) return sum + entry.days;
-        return sum + diffDaysInclusive(entry.startDate, entry.endDate);
-      }, 0);
+      const daysLost = useAggregatedRisk
+        ? aggregate?.daysLost || 0
+        : validated.reduce((sum, entry) => {
+            if (entry.absenceDays) return sum + entry.absenceDays;
+            if (entry.days) return sum + entry.days;
+            return sum + diffDaysInclusive(entry.startDate, entry.endDate);
+          }, 0);
       const available = headcount * periodWorkingDays;
       const rate = available > 0 ? (daysLost / available) * 100 : 0;
       const diagnosticGroups = buildDiagnosticGroupSummary(validated);
       const dominantGroup = diagnosticGroups[0] || null;
 
       const classifyTone = () => {
-        if (validated.length === 0) {
+        if (validatedCount === 0) {
           if (alerts > 0) {
             return {
               status: "Alerta preventiva",
@@ -803,14 +845,14 @@ function Dashboard({ isDark, onToggleTheme }) {
       };
 
       const toneData = classifyTone();
-      const summaryLabel = `${validated.length} ausencia${
-        validated.length === 1 ? "" : "s"
+      const summaryLabel = `${validatedCount} ausencia${
+        validatedCount === 1 ? "" : "s"
       } - ${alerts} alerta${alerts === 1 ? "" : "s"}`;
 
       return {
         sector,
         headcount,
-        validatedCount: validated.length,
+        validatedCount,
         alerts,
         avgRisk,
         rate,
@@ -841,6 +883,8 @@ function Dashboard({ isDark, onToggleTheme }) {
     openHeatmapModal,
     periodWorkingDays,
     validatedBySector,
+    aggregateSectorMetrics,
+    useAggregatedRisk,
   ]);
 
   const summaryMetrics = useMemo(() => {
@@ -848,11 +892,16 @@ function Dashboard({ isDark, onToggleTheme }) {
       new Date(periodYear, periodMonth, 1),
       new Date(periodYear, periodMonth + 1, 0),
     );
-    const totalDaysLost = filteredValidated.reduce((sum, entry) => {
-      if (entry.absenceDays) return sum + entry.absenceDays;
-      if (entry.days) return sum + entry.days;
-      return sum + diffDaysInclusive(entry.startDate, entry.endDate);
-    }, 0);
+    const totalDaysLost = useAggregatedRisk
+      ? selectedRiskPeriod?.daysLost || 0
+      : filteredValidated.reduce((sum, entry) => {
+          if (entry.absenceDays) return sum + entry.absenceDays;
+          if (entry.days) return sum + entry.days;
+          return sum + diffDaysInclusive(entry.startDate, entry.endDate);
+        }, 0);
+    const periodCertificateCount = useAggregatedRisk
+      ? selectedRiskPeriod?.certificateCount || 0
+      : filteredValidated.length;
     const availableDays = headcountActive * periodWorkingDays;
     const absenteeRate =
       availableDays > 0 ? ((totalDaysLost / availableDays) * 100).toFixed(1) : "0.0";
@@ -873,7 +922,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         badge: "Certificados",
         badgeVariant: "info",
         primaryLabel: "Certificados en periodo",
-        primaryValue: filteredValidated.length,
+        primaryValue: periodCertificateCount,
         secondaryLabel: "Metodo",
         secondaryValue: "Promedio por certificado",
       },
@@ -896,6 +945,8 @@ function Dashboard({ isDark, onToggleTheme }) {
     periodRange,
     periodMonth,
     periodYear,
+    selectedRiskPeriod,
+    useAggregatedRisk,
   ]);
 
   const trendData = useMemo(() => {
@@ -908,6 +959,21 @@ function Dashboard({ isDark, onToggleTheme }) {
         year: d.getFullYear(),
         month: d.getMonth(),
         label: d.toLocaleDateString("es-AR", { month: "short" }),
+      });
+    }
+
+    if (useAggregatedRisk) {
+      const periods = new Map(
+        (riskIndicator?.periods || []).map((period) => [period.period, period]),
+      );
+      return months.map((item) => {
+        const key = `${item.year}-${String(item.month + 1).padStart(2, "0")}`;
+        const aggregate = periods.get(key);
+        return {
+          ...item,
+          value: aggregate?.averageRisk ?? 0,
+          count: aggregate?.certificateCount || 0,
+        };
       });
     }
 
@@ -959,7 +1025,7 @@ function Dashboard({ isDark, onToggleTheme }) {
           : 0;
       return { ...item, value: avg, count: scores.length };
     });
-  }, [allHistoryEntries, today]);
+  }, [allHistoryEntries, riskIndicator, today, useAggregatedRisk]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshAll = () => {
@@ -968,6 +1034,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       setHistorySnapshot(readAllHistory());
       setRiskAlerts(readRiskAlerts());
       setRiskAlertSummary(readRiskAlertSummary());
+      setRiskIndicator(readRiskIndicator());
       setLastRefresh(new Date());
     };
     refreshAll();
@@ -976,6 +1043,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshAll);
     window.addEventListener(RISK_ALERTS_UPDATED_EVENT, refreshAll);
+    window.addEventListener(RISK_INDICATOR_UPDATED_EVENT, refreshAll);
     window.addEventListener("storage", refreshAll);
     return () => {
       window.removeEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
@@ -989,6 +1057,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         refreshAll,
       );
       window.removeEventListener(RISK_ALERTS_UPDATED_EVENT, refreshAll);
+      window.removeEventListener(RISK_INDICATOR_UPDATED_EVENT, refreshAll);
       window.removeEventListener("storage", refreshAll);
     };
   }, []);
@@ -1874,12 +1943,43 @@ function Dashboard({ isDark, onToggleTheme }) {
             </div>
 
             <div className="max-h-[480px] overflow-y-auto pr-1">
-              {heatmapModal.items.length === 0 && heatmapModal.alerts.length === 0 ? (
+              {heatmapModal.items.length === 0 &&
+              heatmapModal.alerts.length === 0 &&
+              !heatmapModal.aggregateMetrics ? (
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   No hay certificados asociados a este sector en el periodo.
                 </p>
               ) : (
                 <div className="space-y-4">
+                  {heatmapModal.aggregateMetrics ? (
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Resumen agregado del sector
+                      </p>
+                      <div className="mt-3 grid gap-3 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-3">
+                        <div>
+                          <p className="text-xs uppercase text-slate-400">Ausencias</p>
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {heatmapModal.aggregateMetrics.certificateCount}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-slate-400">Dias perdidos</p>
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {heatmapModal.aggregateMetrics.daysLost}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-slate-400">Riesgo promedio</p>
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {heatmapModal.aggregateMetrics.averageRisk != null
+                              ? `${Number(heatmapModal.aggregateMetrics.averageRisk).toFixed(1)}/10`
+                              : "--"}
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
                   {heatmapModal.alerts.length ? (
                     <section className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 dark:border-rose-900/60 dark:bg-rose-950/20">
                       <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">

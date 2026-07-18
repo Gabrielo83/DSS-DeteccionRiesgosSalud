@@ -109,3 +109,14 @@ Criterios de aceptacion:
 - El detalle explica por que se genero la alerta y que parametros se aplicaron.
 - Las alertas resueltas dejan de contabilizarse como activas sin perder trazabilidad.
 - Las reglas de Firestore y las consultas respetan minimizacion de datos por rol.
+
+## Indicadores gerenciales agregados
+
+Para que Gerencia pueda asignar recursos preventivos sin acceder a datos clinicos individuales:
+
+- `actualizarIndicadoresRiesgo` se ejecuta ante cambios en `historial_medico`.
+- Consolida por mes y sector el promedio de riesgo, cantidad de certificados y dias perdidos.
+- Escribe exclusivamente en `indicadores_riesgo/global`.
+- `reconstruirIndicadoresRiesgo` realiza el backfill inicial de registros existentes.
+- El cliente escucha la proyeccion en tiempo real y alimenta las tarjetas, el mapa sectorial y la tendencia anual.
+- La proyeccion no contiene nombres, legajos, diagnosticos, referencias ni archivos.

@@ -7,7 +7,7 @@
   },
   "main": "src/index.js",
   "scripts": {
-    "lint": "node --check src/index.js && node --check src/riskEngine.js && node --check src/alertEngine.js && node --check src/alertSummary.js && node --check test/alertEngine.test.js && node --check test/alertSummary.test.js",
+    "lint": "node --check src/index.js && node --check src/riskEngine.js && node --check src/alertEngine.js && node --check src/alertSummary.js && node --check src/riskIndicator.js && node --check test/alertEngine.test.js && node --check test/alertSummary.test.js && node --check test/riskIndicator.test.js",
     "test": "node --test",
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions"

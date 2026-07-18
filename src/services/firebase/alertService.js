@@ -7,3 +7,10 @@ export const rebuildFirebaseAlertSummary = async () => {
   const result = await callable();
   return result.data;
 };
+
+export const rebuildFirebaseRiskIndicator = async () => {
+  const functions = getFunctions(getFirebaseApp(), "us-east1");
+  const callable = httpsCallable(functions, "reconstruirIndicadoresRiesgo");
+  const result = await callable();
+  return result.data;
+};

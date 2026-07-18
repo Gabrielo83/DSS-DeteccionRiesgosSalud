@@ -6,6 +6,7 @@ import {
   listPlanesPreventivos,
   getParametrosRiesgo,
   getIndicadorAlertas,
+  getIndicadorRiesgo,
   listAlertasRiesgo,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
@@ -23,6 +24,8 @@ import {
   replaceRiskAlertSummary,
 } from "../../utils/riskAlertStorage.js";
 import { rebuildFirebaseAlertSummary } from "./alertService.js";
+import { rebuildFirebaseRiskIndicator } from "./alertService.js";
+import { replaceRiskIndicator } from "../../utils/riskIndicatorStorage.js";
 
 const toDateString = (value) => {
   if (!value) return "";
@@ -202,6 +205,22 @@ const normalizeRiskAlertSummary = (doc = {}) => ({
   updatedAt: toIsoString(doc.actualizadoEn),
 });
 
+const normalizeRiskIndicator = (doc = {}) => ({
+  periods: (doc.periodos || []).map((period) => ({
+    period: period.periodo || "",
+    averageRisk: period.promedioRiesgo ?? null,
+    certificateCount: period.certificados || 0,
+    daysLost: period.diasPerdidos || 0,
+    sectors: (period.sectores || []).map((sector) => ({
+      sector: sector.sector || "Sin sector",
+      averageRisk: sector.promedioRiesgo ?? null,
+      certificateCount: sector.certificados || 0,
+      daysLost: sector.diasPerdidos || 0,
+    })),
+  })),
+  updatedAt: toIsoString(doc.actualizadoEn),
+});
+
 const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
   try {
     return await fetcher();
@@ -231,6 +250,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     planes,
     alertas,
     indicadorAlertasInicial,
+    indicadorRiesgoInicial,
   ] =
     await Promise.all([
       fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
@@ -275,6 +295,12 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
         "firebase_hydration_failed",
         detail,
       ),
+      fetchOrFallback(
+        getIndicadorRiesgo,
+        null,
+        "firebase_hydration_failed",
+        detail,
+      ),
     ]);
 
   let indicadorAlertas = indicadorAlertasInicial;
@@ -283,6 +309,15 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       rebuildFirebaseAlertSummary,
       null,
       "firebase_alert_summary_rebuild_failed",
+      detail,
+    );
+  }
+  let indicadorRiesgo = indicadorRiesgoInicial;
+  if (!indicadorRiesgo) {
+    indicadorRiesgo = await fetchOrFallback(
+      rebuildFirebaseRiskIndicator,
+      null,
+      "firebase_risk_indicator_rebuild_failed",
       detail,
     );
   }
@@ -324,6 +359,9 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   replaceRiskAlertSummary(
     indicadorAlertas ? normalizeRiskAlertSummary(indicadorAlertas) : null,
   );
+  replaceRiskIndicator(
+    indicadorRiesgo ? normalizeRiskIndicator(indicadorRiesgo) : null,
+  );
 
   appendAuditLog("firebase_hydration_success", {
     user: user?.email,
@@ -338,6 +376,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       planes: planes.length,
       alertas: alertas.length,
       indicadorAlertas: indicadorAlertas ? 1 : 0,
+      indicadorRiesgo: indicadorRiesgo ? 1 : 0,
     },
   });
 
@@ -351,6 +390,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     planes: planes.length,
     alertas: alertas.length,
     indicadorAlertas: indicadorAlertas ? 1 : 0,
+    indicadorRiesgo: indicadorRiesgo ? 1 : 0,
   };
 };
 
@@ -423,6 +463,27 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
           role,
           metadata: {
             collection: "indicadores_alertas",
+            error: error?.message || "No se pudo escuchar Firestore.",
+          },
+        });
+      },
+    ),
+  );
+
+  unsubscribers.push(
+    onSnapshot(
+      doc(db, "indicadores_riesgo", "global"),
+      (snapshot) => {
+        replaceRiskIndicator(
+          snapshot.exists() ? normalizeRiskIndicator(snapshot.data()) : null,
+        );
+      },
+      (error) => {
+        appendAuditLog("firebase_realtime_sync_failed", {
+          user: user?.email,
+          role,
+          metadata: {
+            collection: "indicadores_riesgo",
             error: error?.message || "No se pudo escuchar Firestore.",
           },
         });

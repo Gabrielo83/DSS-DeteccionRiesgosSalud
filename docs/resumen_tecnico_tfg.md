@@ -423,6 +423,18 @@ Integracion visual completada en la etapa 3.5:
 - Deploy de Functions y reglas completado el 18/07/2026.
 - Regresion: lint correcto, 8 pruebas de Functions y 55 pruebas frontend aprobadas; build Firebase correcto.
 
+Indicadores gerenciales agregados implementados el 18/07/2026:
+
+- `actualizarIndicadoresRiesgo` observa `historial_medico` y reconstruye la proyeccion `indicadores_riesgo/global`.
+- La proyeccion contiene hasta 36 periodos mensuales con promedio de riesgo, certificados y dias perdidos.
+- Cada periodo incluye el mismo desglose agregado por sector para alimentar el mapa de calor.
+- No persiste nombres, legajos, diagnosticos, referencias ni documentos medicos.
+- `reconstruirIndicadoresRiesgo` permite inicializar datos historicos de forma autenticada y auditable.
+- Gerencia visualiza tasa de ausentismo, riesgo promedio, evolucion de 12 meses, alertas y cards sectoriales con el mismo criterio preventivo que Salud Ocupacional.
+- Al abrir un sector, Gerencia recibe solo ausencias, dias perdidos y riesgo promedio agregados.
+- Los roles clinicos mantienen el acceso al detalle autorizado; no se ampliaron permisos sobre historias medicas.
+- Regresion actualizada: 9 pruebas de Functions y 55 pruebas frontend aprobadas.
+
 Comandos de verificacion:
 
 ```bash

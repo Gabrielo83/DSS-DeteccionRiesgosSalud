@@ -10,6 +10,7 @@ import {
   evaluateConsolidatedAlert,
 } from "./alertEngine.js";
 import { buildAlertSummary } from "./alertSummary.js";
+import { buildRiskIndicator } from "./riskIndicator.js";
 
 initializeApp();
 
@@ -694,5 +695,52 @@ export const reconstruirIndicadoresAlertas = onCall(
       timestamp: FieldValue.serverTimestamp(),
     });
     return summary;
+  },
+);
+
+const rebuildRiskIndicator = async () => {
+  const snapshot = await db.collection("historial_medico").get();
+  const indicator = buildRiskIndicator(
+    snapshot.docs.map((document) => document.data()),
+  );
+  await db.doc("indicadores_riesgo/global").set(
+    {
+      ...indicator,
+      actualizadoEn: FieldValue.serverTimestamp(),
+    },
+    { merge: false },
+  );
+  return indicator;
+};
+
+export const actualizarIndicadoresRiesgo = onDocumentWritten(
+  {
+    document: "historial_medico/{historyId}",
+    region: "us-east1",
+  },
+  async (event) => {
+    const indicator = await rebuildRiskIndicator();
+    logger.info("Indicadores agregados de riesgo actualizados.", {
+      historyId: event.params.historyId,
+      periodos: indicator.periodos.length,
+    });
+  },
+);
+
+export const reconstruirIndicadoresRiesgo = onCall(
+  { region: "us-east1" },
+  async (request) => {
+    const caller = await requireEnabledUser(request);
+    const indicator = await rebuildRiskIndicator();
+    await db.collection("auditoria").add({
+      eventType: "indicadores_riesgo_reconstruidos_backend",
+      entityId: "global",
+      user: request.auth?.token?.email || request.auth.uid,
+      role: caller.rol,
+      metadata: { periodos: indicator.periodos.length },
+      creadoEn: FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
+    });
+    return indicator;
   },
 );
