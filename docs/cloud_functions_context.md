@@ -73,9 +73,9 @@ Eventos de auditoria:
 
 La alerta es una senal preventiva y trazable. No reemplaza la validacion ni el diagnostico profesional.
 
-## Etapa 3.5 pendiente: consumo visual de alertas
+## Etapa 3.5 completada: consumo visual de alertas
 
-Esta etapa se realizara despues de cerrar Cloud Functions y antes de la validacion final.
+La integracion fue implementada y desplegada el 18/07/2026.
 
 Objetivo:
 
@@ -91,6 +91,16 @@ Acceso por rol previsto:
 - Salud Ocupacional y `superAdmin`: detalle de la alerta y evidencia clinica autorizada.
 - Recursos Humanos: informacion operativa necesaria para coordinar acciones preventivas.
 - Gerencia: indicadores agregados y tendencias, sin diagnosticos individuales.
+
+Implementacion:
+
+- Los roles clinicos se suscriben a `alertas_riesgo` y reciben detalle explicable.
+- Todos los usuarios autenticados pueden leer `indicadores_alertas/global`, que contiene solo cantidades por sector y motivo.
+- `actualizarIndicadoresAlertas` recalcula la proyeccion agregada ante cada cambio de alerta.
+- `reconstruirIndicadoresAlertas` inicializa la proyeccion existente y exige rol `superAdmin`.
+- La tarjeta de alertas y el mapa de calor usan alertas activas consolidadas.
+- El modal sectorial muestra evidencia solo a roles clinicos.
+- El modo local aplica la misma regla sobre el historial validado.
 
 Criterios de aceptacion:
 

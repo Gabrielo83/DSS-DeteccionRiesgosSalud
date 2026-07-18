@@ -71,6 +71,12 @@ export const saveParametrosRiesgo = (configId, data) =>
 export const getParametrosRiesgo = (configId) =>
   getDocById(COLLECTIONS.PARAMETROS, configId);
 
+export const listAlertasRiesgo = () =>
+  listCollection(COLLECTIONS.ALERTAS_RIESGO);
+
+export const getIndicadorAlertas = () =>
+  getDocById(COLLECTIONS.INDICADORES_ALERTAS, "global");
+
 export const saveUsuario = (uid, data) =>
   upsertDocById(COLLECTIONS.USUARIOS, uid, data, { includeCreated: true });
 

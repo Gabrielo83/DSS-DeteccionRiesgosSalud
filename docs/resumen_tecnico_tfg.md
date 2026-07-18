@@ -376,7 +376,7 @@ Etapas:
 2. Etapa 2 - Motor de riesgo backend con patologias, parametros y recurrencia: completada.
 3. Etapa 2.5 - Migrar runtime Node 20 a Node 22: completada.
 4. Etapa 3 - Alertas consolidadas backend: completada y validada manualmente en Firebase.
-5. Etapa 3.5 - Integracion visual de alertas consolidadas: agendada.
+5. Etapa 3.5 - Integracion visual de alertas consolidadas: completada y desplegada.
 6. Etapa 4 - Documentacion tecnica para defensa: en progreso.
 7. Etapa 5 - Validacion final y merge: pendiente.
 
@@ -405,7 +405,7 @@ Alertas consolidadas implementadas el 18/07/2026:
 - No se modifico el frontend en esta etapa; su consumo se evaluara por separado para no alterar la interfaz validada del TFG.
 - La prueba manual con tres certificados musculoesqueleticos del mismo empleado genero correctamente la alerta consolidada y sus campos de auditoria.
 
-Integracion visual agendada para la etapa 3.5:
+Integracion visual completada en la etapa 3.5:
 
 - Suscripcion en tiempo real a `alertas_riesgo` en modo Firebase.
 - Incorporacion al Panel de Control usando los componentes visuales existentes.
@@ -413,7 +413,15 @@ Integracion visual agendada para la etapa 3.5:
 - Detalle explicable: recurrencias, ventana movil, motivos, referencias y estado.
 - Salud Ocupacional accede al detalle autorizado; RRHH recibe informacion operativa y Gerencia indicadores agregados.
 - Equivalencia funcional en modo local sin mostrar al usuario el origen de los datos.
-- Ningun cambio visual se implementara sin revision previa respecto del frontend validado del TFG.
+- La tarjeta `Alertas Activas` y el mapa de calor contabilizan alertas consolidadas, no certificados pendientes.
+- El modal sectorial reutiliza el diseno existente y explica motivo, recurrencias, ventana, riesgo maximo y referencias.
+- Los roles clinicos leen el detalle de `alertas_riesgo`; RRHH y Gerencia leen solo `indicadores_alertas/global`.
+- `actualizarIndicadoresAlertas` mantiene la proyeccion agregada sin datos personales y `reconstruirIndicadoresAlertas` permite inicializarla de forma controlada por `superAdmin`.
+- Firestore actualiza ambos componentes mediante listeners en tiempo real, sin recargar la pagina.
+- El modo local deriva alertas equivalentes desde el historial validado sin exponer el origen de datos en la interfaz.
+- No se cambiaron colores, estructura, tipografia ni navegacion del frontend validado.
+- Deploy de Functions y reglas completado el 18/07/2026.
+- Regresion: lint correcto, 8 pruebas de Functions y 55 pruebas frontend aprobadas; build Firebase correcto.
 
 Comandos de verificacion:
 

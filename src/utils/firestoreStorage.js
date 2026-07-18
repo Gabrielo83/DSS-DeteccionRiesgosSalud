@@ -25,6 +25,8 @@ export const COLLECTIONS = {
   PLANES: "planes_preventivos",
   PATOLOGIAS: "patologias",
   PARAMETROS: "parametros_riesgo",
+  ALERTAS_RIESGO: "alertas_riesgo",
+  INDICADORES_ALERTAS: "indicadores_alertas",
 };
 
 const withTimestamps = (data, includeCreated) => ({

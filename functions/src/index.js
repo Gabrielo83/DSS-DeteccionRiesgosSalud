@@ -9,6 +9,7 @@ import {
   buildAlertId,
   evaluateConsolidatedAlert,
 } from "./alertEngine.js";
+import { buildAlertSummary } from "./alertSummary.js";
 
 initializeApp();
 
@@ -26,7 +27,7 @@ const requireSuperAdmin = async (request) => {
   if (!callerSnapshot.exists || callerSnapshot.data()?.rol !== "superAdmin") {
     throw new HttpsError(
       "permission-denied",
-      "Solo un superAdmin puede actualizar correos de usuarios.",
+      "Solo un superAdmin puede ejecutar esta operacion.",
     );
   }
 
@@ -630,5 +631,52 @@ export const consolidarAlertasRiesgo = onDocumentWritten(
       reference: event.params.reference,
       pairs: uniquePairs.length,
     });
+  },
+);
+
+const rebuildAlertSummary = async () => {
+  const snapshot = await db.collection("alertas_riesgo").get();
+  const summary = buildAlertSummary(
+    snapshot.docs.map((document) => document.data()),
+  );
+  await db.doc("indicadores_alertas/global").set(
+    {
+      ...summary,
+      actualizadoEn: FieldValue.serverTimestamp(),
+    },
+    { merge: false },
+  );
+  return summary;
+};
+
+export const actualizarIndicadoresAlertas = onDocumentWritten(
+  {
+    document: "alertas_riesgo/{alertId}",
+    region: "us-east1",
+  },
+  async (event) => {
+    const summary = await rebuildAlertSummary();
+    logger.info("Indicadores agregados de alertas actualizados.", {
+      alertId: event.params.alertId,
+      totalActivas: summary.totalActivas,
+    });
+  },
+);
+
+export const reconstruirIndicadoresAlertas = onCall(
+  { region: "us-east1" },
+  async (request) => {
+    await requireSuperAdmin(request);
+    const summary = await rebuildAlertSummary();
+    await db.collection("auditoria").add({
+      eventType: "indicadores_alertas_reconstruidos_backend",
+      entityId: "global",
+      user: request.auth?.token?.email || request.auth.uid,
+      role: "superAdmin",
+      metadata: { totalActivas: summary.totalActivas },
+      creadoEn: FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
+    });
+    return summary;
   },
 );

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader.jsx";
+import AuthContext from "../context/AuthContext.jsx";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
 import { readAllHistory } from "../utils/historyStorage.js";
@@ -16,12 +17,18 @@ import {
   EMPLOYEES_UPDATED_EVENT,
   PREVENTIVE_PLANS_UPDATED_EVENT,
   RISK_CONFIG_UPDATED_EVENT,
+  RISK_ALERTS_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { readAllPlans } from "../utils/planStorage.js";
 import {
   generatePreventivePlanTemplate,
   shapePlanForDisplay,
 } from "../utils/preventivePlan.js";
+import {
+  readRiskAlerts,
+  readRiskAlertSummary,
+} from "../utils/riskAlertStorage.js";
+import { isFirebaseProvider } from "../services/appMode.js";
 
 const levelToneMap = {
   Alta: "bg-rose-100 text-rose-700",
@@ -224,6 +231,66 @@ const countOccurrencesInRollingWindow = (timestamps = []) => {
   ).length;
 };
 
+const buildLocalRiskAlerts = (entries = []) => {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const status = String(entry.status || "").toLowerCase();
+    if (status !== "validado" && status !== "aprobado") return;
+    const employeeId = entry.employeeId || entry.employee;
+    const pathologyCategory =
+      entry.pathologyCategory || resolvePathologyLabel(entry);
+    if (!employeeId || !pathologyCategory) return;
+    const key = `${employeeId}::${pathologyCategory}`;
+    groups.set(key, [...(groups.get(key) || []), entry]);
+  });
+
+  return Array.from(groups.entries()).flatMap(([id, occurrences]) => {
+    const dated = occurrences
+      .map((entry) => ({ entry, timestamp: resolveOccurrenceTimestamp(entry) }))
+      .sort((left, right) => left.timestamp - right.timestamp);
+    const latestTimestamp = dated.at(-1)?.timestamp;
+    if (!Number.isFinite(latestTimestamp)) return [];
+    const windowStart = new Date(latestTimestamp);
+    windowStart.setMonth(windowStart.getMonth() - RECURRENCE_WINDOW_MONTHS);
+    const inWindow = dated.filter(
+      ({ timestamp }) =>
+        timestamp >= windowStart.getTime() && timestamp <= latestTimestamp,
+    );
+    const scores = inWindow
+      .map(({ entry }) =>
+        extractScoreValue(entry.riskScoreValue ?? entry.riskScore),
+      )
+      .filter((score) => score != null);
+    const maxRiskScore = scores.length ? Math.max(...scores) : 0;
+    const reasons = [];
+    if (inWindow.length >= MIN_RECURRENT_COUNT) {
+      reasons.push("recurrencia_diagnostica");
+    }
+    if (maxRiskScore >= 7) reasons.push("riesgo_alto");
+    if (!reasons.length) return [];
+    const latest = inWindow.at(-1)?.entry || {};
+    return [{
+      id,
+      employeeId: latest.employeeId || "",
+      employee: latest.employee || "",
+      sector: latest.sector || "Sin sector",
+      position: latest.position || "",
+      pathologyCategory:
+        latest.pathologyCategory || resolvePathologyLabel(latest) || "",
+      status: "activa",
+      reasons,
+      occurrenceCount: inWindow.length,
+      windowMonths: RECURRENCE_WINDOW_MONTHS,
+      maxRiskScore,
+      maxIndividualRiskScore: maxRiskScore,
+      references: inWindow
+        .map(({ entry }) => entry.reference || entry.id)
+        .filter(Boolean),
+      latestReference: latest.reference || latest.id || "",
+    }];
+  });
+};
+
 /* codigo comentado para referencia futura
 const legendLevels = [
   { label: 'Alto (>= 7)', tone: 'bg-rose-500', description: 'Intervencion inmediata y seguimiento continuo.' },
@@ -241,6 +308,13 @@ const legendLevels = [
 */
 
 function Dashboard({ isDark, onToggleTheme }) {
+  const { role } = useContext(AuthContext);
+  const firebaseMode = isFirebaseProvider();
+  const canReadAlertDetail = [
+    "superAdmin",
+    "medico",
+    "administrativoSalud",
+  ].includes(role);
   const [employees, setEmployees] = useState(() =>
     typeof window === "undefined" ? [] : readEmployees(),
   );
@@ -249,6 +323,12 @@ function Dashboard({ isDark, onToggleTheme }) {
   );
   const [historySnapshot, setHistorySnapshot] = useState(() =>
     typeof window === "undefined" ? {} : readAllHistory(),
+  );
+  const [riskAlerts, setRiskAlerts] = useState(() =>
+    typeof window === "undefined" ? [] : readRiskAlerts(),
+  );
+  const [riskAlertSummary, setRiskAlertSummary] = useState(() =>
+    typeof window === "undefined" ? null : readRiskAlertSummary(),
   );
   const today = useMemo(() => new Date(), []);
   const [periodMonth, setPeriodMonth] = useState(today.getMonth());
@@ -267,6 +347,8 @@ function Dashboard({ isDark, onToggleTheme }) {
     diagnosticGroups: [],
     validatedCount: 0,
     pendingCount: 0,
+    alerts: [],
+    headcount: 0,
   });
   const [planModal, setPlanModal] = useState({
     isOpen: false,
@@ -367,6 +449,14 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
   }, [allHistoryEntries, periodRange]);
 
+  const effectiveRiskAlerts = useMemo(
+    () =>
+      (firebaseMode ? riskAlerts : buildLocalRiskAlerts(allHistoryEntries)).filter(
+        (alert) => alert.status === "activa",
+      ),
+    [allHistoryEntries, firebaseMode, riskAlerts],
+  );
+
   const validatedBySector = useMemo(() => {
     const map = new Map();
     filteredValidated.forEach((entry) => {
@@ -378,30 +468,25 @@ function Dashboard({ isDark, onToggleTheme }) {
     return map;
   }, [employeeIndexById, filteredValidated]);
 
-  const alertsCount = useMemo(() => {
-    return validationQueue.filter((entry) => {
-      const status = (entry.status || "").toLowerCase();
-      const priority = (entry.priority || "").toLowerCase();
-      const isPending = status.includes("pendiente") || status.includes("revision");
-      return priority === "alta" && isPending;
-    }).length;
-  }, [validationQueue]);
+  const alertsCount =
+    firebaseMode && riskAlertSummary
+      ? riskAlertSummary.totalActive
+      : effectiveRiskAlerts.length;
 
   const alertsBySector = useMemo(() => {
     const map = new Map();
-    validationQueue.forEach((entry) => {
-      const status = (entry.status || "").toLowerCase();
-      const priority = (entry.priority || "").toLowerCase();
-      const isPending =
-        status.includes("pendiente") || status.includes("revision");
-      if (priority !== "alta" || !isPending) return;
-      const base =
-        entry.employeeId && employeeIndexById.get(entry.employeeId);
-      const sector = entry.sector || base?.sector || "Sin sector";
+    if (firebaseMode && riskAlertSummary?.sectors) {
+      riskAlertSummary.sectors.forEach(({ sector, cantidad }) => {
+        map.set(sector || "Sin sector", Number(cantidad) || 0);
+      });
+      return map;
+    }
+    effectiveRiskAlerts.forEach((entry) => {
+      const sector = entry.sector || "Sin sector";
       map.set(sector, (map.get(sector) || 0) + 1);
     });
     return map;
-  }, [employeeIndexById, validationQueue]);
+  }, [effectiveRiskAlerts, firebaseMode, riskAlertSummary]);
 
   const riskAverage = useMemo(() => {
     if (!filteredValidated.length) return null;
@@ -589,6 +674,18 @@ function Dashboard({ isDark, onToggleTheme }) {
         },
       }));
 
+      const alertItems = canReadAlertDetail
+        ? effectiveRiskAlerts
+            .filter((alert) => (alert.sector || "Sin sector") === sector)
+            .map((alert) => ({
+              ...alert,
+              pathologyLabel:
+                pathologyCategoryMap.get(alert.pathologyCategory) ||
+                alert.pathologyCategory ||
+                "Sin grupo informado",
+            }))
+        : [];
+
       setHeatmapModal({
         isOpen: true,
         sector,
@@ -596,6 +693,8 @@ function Dashboard({ isDark, onToggleTheme }) {
         diagnosticGroups: buildDiagnosticGroupSummary(validatedItems),
         validatedCount: validatedItems.length,
         pendingCount: queueItems.length,
+        alerts: alertItems,
+        headcount: headcountBySector.get(sector) || 0,
       });
     },
     [
@@ -605,6 +704,8 @@ function Dashboard({ isDark, onToggleTheme }) {
       headcountBySector,
       allHistoryEntries,
       periodRange,
+      canReadAlertDetail,
+      effectiveRiskAlerts,
     ],
   );
 
@@ -617,6 +718,8 @@ function Dashboard({ isDark, onToggleTheme }) {
         diagnosticGroups: [],
         validatedCount: 0,
         pendingCount: 0,
+        alerts: [],
+        headcount: 0,
       }),
     [],
   );
@@ -669,7 +772,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         if (validated.length === 0) {
           if (alerts > 0) {
             return {
-              status: "Alertas pendientes",
+              status: "Alerta preventiva",
               tone: "from-slate-500/70 to-slate-600/70",
             };
           }
@@ -779,7 +882,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         value: alertsCount,
         badge: "Alta prioridad",
         badgeVariant: "danger",
-        primaryLabel: "Pendientes/Revisión",
+        primaryLabel: "Alertas consolidadas",
         primaryValue: alertsCount,
         secondaryLabel: "Periodo",
         secondaryValue: periodRange.label,
@@ -863,6 +966,8 @@ function Dashboard({ isDark, onToggleTheme }) {
       setEmployees(readEmployees());
       setValidationQueue(readValidationQueue());
       setHistorySnapshot(readAllHistory());
+      setRiskAlerts(readRiskAlerts());
+      setRiskAlertSummary(readRiskAlertSummary());
       setLastRefresh(new Date());
     };
     refreshAll();
@@ -870,6 +975,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     window.addEventListener(RISK_CONFIG_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshAll);
+    window.addEventListener(RISK_ALERTS_UPDATED_EVENT, refreshAll);
     window.addEventListener("storage", refreshAll);
     return () => {
       window.removeEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
@@ -882,6 +988,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         MEDICAL_HISTORY_UPDATED_EVENT,
         refreshAll,
       );
+      window.removeEventListener(RISK_ALERTS_UPDATED_EVENT, refreshAll);
       window.removeEventListener("storage", refreshAll);
     };
   }, []);
@@ -1734,15 +1841,16 @@ function Dashboard({ isDark, onToggleTheme }) {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
                     HC activos:{" "}
-                    {heatmapModal.items.length
-                      ? heatmapModal.items[0].sectorHeadcount?.active ?? "--"
-                      : "--"}
+                    {heatmapModal.headcount}
                   </span>
                   <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100">
                     Validados: {heatmapModal.validatedCount}
                   </span>
                   <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
                     Pendientes: {heatmapModal.pendingCount}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-100">
+                    Alertas: {alertsBySector.get(heatmapModal.sector) || 0}
                   </span>
                 </div>
               </div>
@@ -1766,12 +1874,54 @@ function Dashboard({ isDark, onToggleTheme }) {
             </div>
 
             <div className="max-h-[480px] overflow-y-auto pr-1">
-              {heatmapModal.items.length === 0 ? (
+              {heatmapModal.items.length === 0 && heatmapModal.alerts.length === 0 ? (
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   No hay certificados asociados a este sector en el periodo.
                 </p>
               ) : (
                 <div className="space-y-4">
+                  {heatmapModal.alerts.length ? (
+                    <section className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 dark:border-rose-900/60 dark:bg-rose-950/20">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                        Alertas preventivas activas
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {heatmapModal.alerts.map((alert) => (
+                          <div
+                            key={alert.id}
+                            className="rounded-xl bg-white px-3 py-3 text-xs text-slate-600 dark:bg-slate-950/70 dark:text-slate-300"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-semibold text-slate-900 dark:text-white">
+                                  {alert.employee || alert.employeeId || "Empleado"}
+                                </p>
+                                <p>{alert.pathologyLabel}</p>
+                              </div>
+                              <span className="rounded-full bg-rose-100 px-2 py-1 font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-100">
+                                Riesgo {Number(alert.maxRiskScore || 0).toFixed(1)}
+                              </span>
+                            </div>
+                            <p className="mt-2">
+                              Motivo: {(alert.reasons || [])
+                                .map((reason) =>
+                                  reason === "recurrencia_diagnostica"
+                                    ? "Recurrencia diagnóstica"
+                                    : "Riesgo individual alto",
+                                )
+                                .join(" y ")}
+                            </p>
+                            <p>
+                              {alert.occurrenceCount} evento(s) en una ventana de {alert.windowMonths} meses
+                            </p>
+                            {alert.references?.length ? (
+                              <p>Referencias: {alert.references.join(", ")}</p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
                   {heatmapModal.diagnosticGroups.length ? (
                     <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
                       <div className="flex flex-wrap items-start justify-between gap-3">

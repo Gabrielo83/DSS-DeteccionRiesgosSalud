@@ -119,6 +119,11 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /indicadores_alertas/{indicatorId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+    }
+
     match /auditoria/{auditId} {
       allow read: if hasAnyRole(["superAdmin"]);
       allow create: if signedIn();

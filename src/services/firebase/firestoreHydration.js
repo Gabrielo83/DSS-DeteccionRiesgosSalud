@@ -5,9 +5,11 @@ import {
   listPatologias,
   listPlanesPreventivos,
   getParametrosRiesgo,
+  getIndicadorAlertas,
+  listAlertasRiesgo,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot } from "firebase/firestore";
 import { getFirebaseServices } from "./firebaseClient.js";
 import { replaceDrafts } from "../../utils/draftStorage.js";
 import { replaceEmployees } from "../../utils/employeeStorage.js";
@@ -16,6 +18,11 @@ import { replaceAllPlans } from "../../utils/planStorage.js";
 import { replaceRiskConfig } from "../../utils/riskConfigStorage.js";
 import { replaceValidationQueue } from "../../utils/validationStorage.js";
 import { appendAuditLog } from "../../utils/auditLog.js";
+import {
+  replaceRiskAlerts,
+  replaceRiskAlertSummary,
+} from "../../utils/riskAlertStorage.js";
+import { rebuildFirebaseAlertSummary } from "./alertService.js";
 
 const toDateString = (value) => {
   if (!value) return "";
@@ -170,6 +177,31 @@ const normalizeEmployee = (doc = {}) => ({
   terminationDate: toDateString(doc.fechaBaja || doc.terminationDate),
 });
 
+const normalizeRiskAlert = (doc = {}) => ({
+  id: doc.alertaId || doc.id || "",
+  employeeId: doc.employeeId || "",
+  employee: doc.nombreCompleto || "",
+  sector: doc.sector || "Sin sector",
+  position: doc.puesto || "",
+  pathologyCategory: doc.grupoPatologia || "",
+  status: doc.estado || "",
+  reasons: doc.motivos || [],
+  occurrenceCount: doc.recurrencias || 0,
+  windowMonths: doc.ventanaMeses || 6,
+  maxRiskScore: doc.riesgoMaximo ?? 0,
+  maxIndividualRiskScore: doc.riesgoIndividualMaximo ?? 0,
+  references: doc.referencias || [],
+  latestReference: doc.ultimaReferencia || "",
+  latestDate: toDateString(doc.ultimaFecha),
+});
+
+const normalizeRiskAlertSummary = (doc = {}) => ({
+  totalActive: doc.totalActivas || 0,
+  sectors: Array.isArray(doc.sectores) ? doc.sectores : [],
+  reasons: doc.motivos || {},
+  updatedAt: toIsoString(doc.actualizadoEn),
+});
+
 const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
   try {
     return await fetcher();
@@ -197,6 +229,8 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     historial,
     borradores,
     planes,
+    alertas,
+    indicadorAlertasInicial,
   ] =
     await Promise.all([
       fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
@@ -227,7 +261,31 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
             detail,
           )
         : Promise.resolve([]),
+      canReadClinical
+        ? fetchOrFallback(
+            listAlertasRiesgo,
+            [],
+            "firebase_hydration_failed",
+            detail,
+          )
+        : Promise.resolve([]),
+      fetchOrFallback(
+        getIndicadorAlertas,
+        null,
+        "firebase_hydration_failed",
+        detail,
+      ),
     ]);
+
+  let indicadorAlertas = indicadorAlertasInicial;
+  if (!indicadorAlertas && role === "superAdmin") {
+    indicadorAlertas = await fetchOrFallback(
+      rebuildFirebaseAlertSummary,
+      null,
+      "firebase_alert_summary_rebuild_failed",
+      detail,
+    );
+  }
 
   replaceEmployees(empleados.map(normalizeEmployee));
   replaceRiskConfig({
@@ -261,7 +319,11 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   });
   if (canReadClinical) {
     replaceAllPlans(plansByEmployee);
+    replaceRiskAlerts(alertas.map(normalizeRiskAlert));
   }
+  replaceRiskAlertSummary(
+    indicadorAlertas ? normalizeRiskAlertSummary(indicadorAlertas) : null,
+  );
 
   appendAuditLog("firebase_hydration_success", {
     user: user?.email,
@@ -274,6 +336,8 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       historial: historial.length,
       borradores: borradores.length,
       planes: planes.length,
+      alertas: alertas.length,
+      indicadorAlertas: indicadorAlertas ? 1 : 0,
     },
   });
 
@@ -285,6 +349,8 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     historial: historial.length,
     borradores: borradores.length,
     planes: planes.length,
+    alertas: alertas.length,
+    indicadorAlertas: indicadorAlertas ? 1 : 0,
   };
 };
 
@@ -321,7 +387,48 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
         },
       ),
     );
+    unsubscribers.push(
+      onSnapshot(
+        collection(db, "alertas_riesgo"),
+        (snapshot) => {
+          replaceRiskAlerts(mapSnapshotDocs(snapshot).map(normalizeRiskAlert));
+        },
+        (error) => {
+          appendAuditLog("firebase_realtime_sync_failed", {
+            user: user?.email,
+            role,
+            metadata: {
+              collection: "alertas_riesgo",
+              error: error?.message || "No se pudo escuchar Firestore.",
+            },
+          });
+        },
+      ),
+    );
   }
+
+  unsubscribers.push(
+    onSnapshot(
+      doc(db, "indicadores_alertas", "global"),
+      (snapshot) => {
+        replaceRiskAlertSummary(
+          snapshot.exists()
+            ? normalizeRiskAlertSummary(snapshot.data())
+            : null,
+        );
+      },
+      (error) => {
+        appendAuditLog("firebase_realtime_sync_failed", {
+          user: user?.email,
+          role,
+          metadata: {
+            collection: "indicadores_alertas",
+            error: error?.message || "No se pudo escuchar Firestore.",
+          },
+        });
+      },
+    ),
+  );
 
   unsubscribers.push(
     onSnapshot(
