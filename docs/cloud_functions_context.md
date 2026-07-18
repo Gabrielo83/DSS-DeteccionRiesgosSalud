@@ -72,3 +72,30 @@ Eventos de auditoria:
 - `alerta_riesgo_resuelta_backend`
 
 La alerta es una senal preventiva y trazable. No reemplaza la validacion ni el diagnostico profesional.
+
+## Etapa 3.5 pendiente: consumo visual de alertas
+
+Esta etapa se realizara despues de cerrar Cloud Functions y antes de la validacion final.
+
+Objetivo:
+
+- Consumir `alertas_riesgo` en tiempo real desde el modo Firebase.
+- Integrar alertas activas, motivos explicables y tendencias en el Panel de Control.
+- Mostrar recurrencias, ventana evaluada y referencias que originaron la alerta.
+- Mantener el comportamiento equivalente en modo local con el motor local existente.
+- Evitar cambios visuales no aprobados: se reutilizaran tarjetas, modales y patrones actuales.
+- No mezclar certificados pendientes de validacion con alertas consolidadas de riesgo.
+
+Acceso por rol previsto:
+
+- Salud Ocupacional y `superAdmin`: detalle de la alerta y evidencia clinica autorizada.
+- Recursos Humanos: informacion operativa necesaria para coordinar acciones preventivas.
+- Gerencia: indicadores agregados y tendencias, sin diagnosticos individuales.
+
+Criterios de aceptacion:
+
+- Una alerta creada o resuelta en Firestore actualiza el componente correspondiente sin recargar la pagina.
+- El Panel de Control presenta cantidad, sector, motivo y estado de las alertas activas.
+- El detalle explica por que se genero la alerta y que parametros se aplicaron.
+- Las alertas resueltas dejan de contabilizarse como activas sin perder trazabilidad.
+- Las reglas de Firestore y las consultas respetan minimizacion de datos por rol.

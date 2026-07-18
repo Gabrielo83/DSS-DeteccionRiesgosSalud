@@ -375,18 +375,19 @@ Etapas:
 1. Etapa 1 - Function inicial y auditoria backend: completada.
 2. Etapa 2 - Motor de riesgo backend con patologias, parametros y recurrencia: completada.
 3. Etapa 2.5 - Migrar runtime Node 20 a Node 22: completada.
-4. Etapa 3 - Alertas consolidadas backend: implementada; pendiente de validacion remota controlada.
-5. Etapa 4 - Documentacion tecnica para defensa: en progreso.
-6. Etapa 5 - Validacion final y merge: pendiente.
+4. Etapa 3 - Alertas consolidadas backend: completada y validada manualmente en Firebase.
+5. Etapa 3.5 - Integracion visual de alertas consolidadas: agendada.
+6. Etapa 4 - Documentacion tecnica para defensa: en progreso.
+7. Etapa 5 - Validacion final y merge: pendiente.
 
 Migracion Node 22 completada el 18/07/2026:
 
 - `functions/package.json` declara Node 22.
 - `firebase-functions` actualizado a `7.3.0`.
 - `firebase-admin` actualizado a `14.2.0`.
-- Sintaxis e importacion de ambas Functions verificadas con Node `22.23.1`.
+- Sintaxis e importacion de las Functions verificadas con Node `22.23.1`.
 - Deploy realizado con Firebase CLI `15.23.0`.
-- `actualizarCorreoUsuario` y `recalcularRiesgoValidacionMedica` quedaron `ACTIVE`, `gcfv2`, `nodejs22`, en `us-east1`.
+- `actualizarCorreoUsuario`, `recalcularRiesgoValidacionMedica` y `consolidarAlertasRiesgo` quedaron `ACTIVE`, `gcfv2`, `nodejs22`, en `us-east1`.
 - Prueba remota no destructiva de la callable: respondio `HTTP 401 / UNAUTHENTICATED` ante una solicitud anonima, confirmando disponibilidad y control de acceso.
 - Regresion local: lint de Functions correcto, lint general correcto y 55 pruebas aprobadas.
 - `npm audit --omit=dev` informa siete hallazgos moderados transitivos y ninguno alto o critico. No se aplico la solucion automatica porque propone degradar los SDK principales a versiones incompatibles; queda como riesgo residual monitoreado.
@@ -402,6 +403,17 @@ Alertas consolidadas implementadas el 18/07/2026:
 - Registra transiciones en `auditoria` con origen `cloud-functions`.
 - Los clientes clinicos pueden leer alertas, pero no crearlas, modificarlas ni eliminarlas.
 - No se modifico el frontend en esta etapa; su consumo se evaluara por separado para no alterar la interfaz validada del TFG.
+- La prueba manual con tres certificados musculoesqueleticos del mismo empleado genero correctamente la alerta consolidada y sus campos de auditoria.
+
+Integracion visual agendada para la etapa 3.5:
+
+- Suscripcion en tiempo real a `alertas_riesgo` en modo Firebase.
+- Incorporacion al Panel de Control usando los componentes visuales existentes.
+- Separacion conceptual entre pendientes de validacion y alertas de riesgo consolidadas.
+- Detalle explicable: recurrencias, ventana movil, motivos, referencias y estado.
+- Salud Ocupacional accede al detalle autorizado; RRHH recibe informacion operativa y Gerencia indicadores agregados.
+- Equivalencia funcional en modo local sin mostrar al usuario el origen de los datos.
+- Ningun cambio visual se implementara sin revision previa respecto del frontend validado del TFG.
 
 Comandos de verificacion:
 
@@ -489,7 +501,7 @@ Agregar aqui cualquier decision tomada fuera de este chat:
 - Alertas backend:
   - Coleccion elegida: `alertas_riesgo`.
   - Campos: empleado, grupo, estado, motivos, recurrencias, ventana, riesgo maximo, referencias y timestamps de ciclo de vida.
-  - Pantallas que consumen: pendiente de decision explicita; la etapa 3 no cambia el frontend validado.
+  - Pantallas que consumen: agendado para etapa 3.5 en Panel de Control y detalle de alerta, reutilizando el diseno existente.
 
 - Node 22:
   - Fecha de migracion: 18/07/2026.
