@@ -200,8 +200,18 @@ const normalizeRiskAlert = (doc = {}) => ({
 
 const normalizeRiskAlertSummary = (doc = {}) => ({
   totalActive: doc.totalActivas || 0,
-  sectors: Array.isArray(doc.sectores) ? doc.sectores : [],
+  sectors: (Array.isArray(doc.sectores) ? doc.sectores : []).map((sector) => ({
+    sector: sector.sector || "Sin sector",
+    cantidad: Number(sector.cantidad || 0),
+    groups: (Array.isArray(sector.grupos) ? sector.grupos : []).map((group) => ({
+      pathologyCategory: group.grupoPatologia || "",
+      activeAlerts: Number(group.cantidadAlertas || 0),
+      occurrences: Number(group.recurrencias || 0),
+      windowMonths: Number(group.ventanaMeses || 6),
+    })),
+  })),
   reasons: doc.motivos || {},
+  version: doc.version || "",
   updatedAt: toIsoString(doc.actualizadoEn),
 });
 
@@ -304,7 +314,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     ]);
 
   let indicadorAlertas = indicadorAlertasInicial;
-  if (!indicadorAlertas) {
+  if (
+    !indicadorAlertas ||
+    indicadorAlertas.version !== "alert-summary-v2"
+  ) {
     indicadorAlertas = await fetchOrFallback(
       rebuildFirebaseAlertSummary,
       null,

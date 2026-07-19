@@ -95,9 +95,11 @@ Acceso por rol previsto:
 Implementacion:
 
 - Los roles clinicos se suscriben a `alertas_riesgo` y reciben detalle explicable.
-- Todos los usuarios autenticados pueden leer `indicadores_alertas/global`, que contiene solo cantidades por sector y motivo.
+- Todos los usuarios autenticados pueden leer `indicadores_alertas/global`, que contiene solo cantidades por sector, motivo y grupo diagnostico.
 - `actualizarIndicadoresAlertas` recalcula la proyeccion agregada ante cada cambio de alerta.
 - `reconstruirIndicadoresAlertas` inicializa la proyeccion cuando falta; exige autenticacion y un rol habilitado, y solo devuelve el resumen sanitizado.
+- La version `alert-summary-v2` agrupa todas las alertas activas por sector y grupo diagnostico, conserva la ventana movil aplicada y las ordena por cantidad de alertas y recurrencias.
+- Gerencia visualiza los grupos con alerta en el modal sectorial, sin nombres, certificados, CIE-10 ni diagnosticos individuales.
 - La tarjeta de alertas y el mapa de calor usan alertas activas consolidadas.
 - El modal sectorial muestra evidencia solo a roles clinicos.
 - El modo local aplica la misma regla sobre el historial validado.

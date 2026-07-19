@@ -417,6 +417,10 @@ Integracion visual completada en la etapa 3.5:
 - El modal sectorial reutiliza el diseno existente y explica motivo, recurrencias, ventana, riesgo maximo y referencias.
 - Los roles clinicos leen el detalle de `alertas_riesgo`; RRHH y Gerencia leen solo `indicadores_alertas/global`.
 - `actualizarIndicadoresAlertas` mantiene la proyeccion agregada sin datos personales y `reconstruirIndicadoresAlertas` permite inicializarla a usuarios autenticados con rol habilitado cuando todavia no existe.
+- `alert-summary-v2` incorpora todos los grupos diagnosticos con alertas activas por sector, ordenados por cantidad de alertas y recurrencias dentro de la ventana movil configurada.
+- Gerencia puede identificar concentraciones musculoesqueleticas, respiratorias u otros grupos para decidir acciones y presupuesto, sin acceder a empleados, certificados, CIE-10 ni diagnosticos individuales.
+- Ejemplos defendibles de decision: revisar puestos ante concentraciones musculoesqueleticas, evaluar campanas de vacunacion ante grupos respiratorios y planificar controles periodicos ante alertas cardiovasculares.
+- El motor informa y prioriza patrones; no prescribe acciones medicas. La intervencion concreta requiere evaluacion profesional y autorizacion gerencial.
 - Firestore actualiza ambos componentes mediante listeners en tiempo real, sin recargar la pagina.
 - El modo local deriva alertas equivalentes desde el historial validado sin exponer el origen de datos en la interfaz.
 - No se cambiaron colores, estructura, tipografia ni navegacion del frontend validado.

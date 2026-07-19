@@ -353,6 +353,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     validatedCount: 0,
     pendingCount: 0,
     alerts: [],
+    alertDiagnosticGroups: [],
     headcount: 0,
     aggregateMetrics: null,
   });
@@ -513,6 +514,23 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
     return map;
   }, [effectiveRiskAlerts, firebaseMode, riskAlertSummary]);
+
+  const alertDiagnosticGroupsBySector = useMemo(
+    () =>
+      new Map(
+        (riskAlertSummary?.sectors || []).map((sector) => [
+          sector.sector || "Sin sector",
+          (sector.groups || []).map((group) => ({
+            ...group,
+            label:
+              pathologyCategoryMap.get(group.pathologyCategory) ||
+              group.pathologyCategory ||
+              "Sin grupo informado",
+          })),
+        ]),
+      ),
+    [riskAlertSummary],
+  );
 
   const riskAverage = useMemo(() => {
     if (useAggregatedRisk) return selectedRiskPeriod?.averageRisk ?? null;
@@ -721,6 +739,9 @@ function Dashboard({ isDark, onToggleTheme }) {
         validatedCount: validatedItems.length,
         pendingCount: queueItems.length,
         alerts: alertItems,
+        alertDiagnosticGroups: canReadAlertDetail
+          ? []
+          : alertDiagnosticGroupsBySector.get(sector) || [],
         headcount: headcountBySector.get(sector) || 0,
         aggregateMetrics: useAggregatedRisk
           ? aggregateSectorMetrics.get(sector) || null
@@ -736,6 +757,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       periodRange,
       canReadAlertDetail,
       effectiveRiskAlerts,
+      alertDiagnosticGroupsBySector,
       aggregateSectorMetrics,
       useAggregatedRisk,
     ],
@@ -751,6 +773,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         validatedCount: 0,
         pendingCount: 0,
         alerts: [],
+        alertDiagnosticGroups: [],
         headcount: 0,
         aggregateMetrics: null,
       }),
@@ -1945,6 +1968,7 @@ function Dashboard({ isDark, onToggleTheme }) {
             <div className="max-h-[480px] overflow-y-auto pr-1">
               {heatmapModal.items.length === 0 &&
               heatmapModal.alerts.length === 0 &&
+              heatmapModal.alertDiagnosticGroups.length === 0 &&
               !heatmapModal.aggregateMetrics ? (
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   No hay certificados asociados a este sector en el periodo.
@@ -1977,6 +2001,31 @@ function Dashboard({ isDark, onToggleTheme }) {
                               : "--"}
                           </p>
                         </div>
+                      </div>
+                    </section>
+                  ) : null}
+                  {heatmapModal.alertDiagnosticGroups.length ? (
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Grupos diagnósticos con alerta
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {heatmapModal.alertDiagnosticGroups.map((group) => (
+                          <div
+                            key={group.pathologyCategory || group.label}
+                            className="grid gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-950/70 dark:text-slate-300 sm:grid-cols-[1fr_auto]"
+                          >
+                            <p className="font-semibold text-slate-900 dark:text-white">
+                              {group.label}
+                            </p>
+                            <p className="font-semibold text-rose-700 dark:text-rose-300 sm:text-right">
+                              {group.activeAlerts}{" "}
+                              {group.activeAlerts === 1
+                                ? "alerta activa"
+                                : "alertas activas"}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     </section>
                   ) : null}

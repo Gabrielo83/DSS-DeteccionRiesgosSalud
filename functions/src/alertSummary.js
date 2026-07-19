@@ -1,6 +1,6 @@
 export const buildAlertSummary = (alerts = []) => {
   const active = alerts.filter((alert) => alert.estado === "activa");
-  const sectorCounts = new Map();
+  const sectors = new Map();
   const reasonCounts = {
     recurrenciaDiagnostica: 0,
     riesgoAlto: 0,
@@ -8,7 +8,27 @@ export const buildAlertSummary = (alerts = []) => {
 
   active.forEach((alert) => {
     const sector = alert.sector || "Sin sector";
-    sectorCounts.set(sector, (sectorCounts.get(sector) || 0) + 1);
+    const pathologyGroup = alert.grupoPatologia || "sin_grupo_informado";
+    const sectorSummary = sectors.get(sector) || {
+      cantidad: 0,
+      grupos: new Map(),
+    };
+    const groupSummary = sectorSummary.grupos.get(pathologyGroup) || {
+      cantidadAlertas: 0,
+      recurrencias: 0,
+      ventanaMeses: Number(alert.ventanaMeses || 6),
+    };
+
+    sectorSummary.cantidad += 1;
+    groupSummary.cantidadAlertas += 1;
+    groupSummary.recurrencias += Number(alert.recurrencias || 0);
+    groupSummary.ventanaMeses = Math.max(
+      groupSummary.ventanaMeses,
+      Number(alert.ventanaMeses || 6),
+    );
+    sectorSummary.grupos.set(pathologyGroup, groupSummary);
+    sectors.set(sector, sectorSummary);
+
     if ((alert.motivos || []).includes("recurrencia_diagnostica")) {
       reasonCounts.recurrenciaDiagnostica += 1;
     }
@@ -19,12 +39,24 @@ export const buildAlertSummary = (alerts = []) => {
 
   return {
     totalActivas: active.length,
-    sectores: Array.from(sectorCounts, ([sector, cantidad]) => ({
+    sectores: Array.from(sectors, ([sector, summary]) => ({
       sector,
-      cantidad,
+      cantidad: summary.cantidad,
+      grupos: Array.from(
+        summary.grupos,
+        ([grupoPatologia, groupSummary]) => ({
+          grupoPatologia,
+          ...groupSummary,
+        }),
+      ).sort(
+        (left, right) =>
+          right.cantidadAlertas - left.cantidadAlertas ||
+          right.recurrencias - left.recurrencias ||
+          left.grupoPatologia.localeCompare(right.grupoPatologia),
+      ),
     })).sort((left, right) => left.sector.localeCompare(right.sector)),
     motivos: reasonCounts,
     origen: "cloud-functions",
-    version: "alert-summary-v1",
+    version: "alert-summary-v2",
   };
 };
