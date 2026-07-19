@@ -43,7 +43,7 @@ npm run build
 
 Como explicarlo:
 
-> Se eligio React porque permite construir una SPA modular por pantallas. Vite simplifica el entorno de desarrollo y build. La persistencia local con localStorage e IndexedDB permite ejecutar el sistema sin depender de conectividad, y deja preparada una evolucion futura hacia Firebase o un backend remoto.
+> Se eligio React porque permite construir una SPA modular por pantallas. Vite simplifica el entorno de desarrollo y build. La persistencia local con localStorage e IndexedDB mantiene continuidad operativa, mientras Firebase aporta autenticacion, persistencia remota, archivos y procesamiento serverless.
 
 ## 3. Arquitectura general
 
@@ -61,6 +61,29 @@ Capas principales:
 - `src/utils`: reglas de negocio, almacenamiento, cola y planes.
 - `src/demo`: datos controlados para demostracion.
 - `src/pages/tests`: pruebas automatizadas.
+
+### 3.1 Estrategia offline-first
+
+La aplicacion no reemplaza Firebase por IndexedDB. Usa una copia operativa local y una cola de sincronizacion:
+
+1. La accion se refleja localmente y se registra con un ID idempotente.
+2. El adjunto temporal se guarda como `Blob` en IndexedDB, separado de la cola.
+3. Si no hay red, la operacion permanece pendiente.
+4. Al volver la conectividad, se procesa solo la cola del usuario autenticado.
+5. Firestore registra version, ID de origen, tiempo del cliente y timestamp del servidor.
+6. Cloud Functions consolida riesgo y alertas una vez que el documento llega al backend.
+
+Politica de conflicto:
+
+- Borradores: ultima escritura.
+- Certificados pendientes: pueden completarse o corregirse.
+- Decisiones `validado` o `rechazado`: una operacion vieja no puede reemplazarlas; queda marcada como conflicto para revision.
+
+Frase recomendada:
+
+> Offline-first garantiza continuidad de captura y consulta sobre la ultima copia valida. Los servicios exclusivamente remotos, como Storage y Cloud Functions, se completan al recuperar conectividad.
+
+La persistencia Firestore entre sesiones se activa solo en dispositivos confiables. Al cerrar sesion se limpia la cache clinica de la aplicacion, preservando unicamente operaciones pendientes vinculadas a su propietario para evitar perdida de trabajo.
 
 Rutas principales:
 

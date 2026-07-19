@@ -69,7 +69,11 @@ Para modo Firebase:
 
 ```env
 VITE_DATA_PROVIDER="firebase"
+VITE_FIREBASE_TRUSTED_DEVICE="false"
+VITE_ENABLE_OFFLINE_SHELL="false"
 ```
+
+`VITE_FIREBASE_TRUSTED_DEVICE` conserva la cache Firestore entre sesiones y solo debe activarse en equipos confiables. `VITE_ENABLE_OFFLINE_SHELL` registra el service worker en builds de produccion para poder reabrir la aplicacion sin red.
 
 4. Ejecutar:
 
@@ -125,12 +129,11 @@ npm run build:firebase
 
 ## Usuarios de referencia
 
-- superadmin@empresa.com / Super123*
-- medico@empresa.com / Medico123*
-- administrativo@empresa.com / Admin123*
-- salud.admin@empresa.com / Salud123*
-- gerente@empresa.com / Gerente123*
-- rrhh@empresa.com / Rrhh123*
+En modo Firebase, los usuarios se administran desde Firebase Authentication y sus roles desde `usuarios/{uid}`. El repositorio no publica ni persiste contrasenas.
+
+## Prueba offline-first
+
+La arquitectura, limites, politica de conflictos y prueba manual se documentan en `docs/OFFLINE_FIRST_DEFENSA.md`.
 
 ## Capturas
 

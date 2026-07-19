@@ -233,7 +233,7 @@ const normalizeRiskIndicator = (doc = {}) => ({
 
 const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
   try {
-    return await fetcher();
+    return { ok: true, value: await fetcher(), error: null };
   } catch (error) {
     appendAuditLog(eventName, {
       ...detail,
@@ -241,7 +241,7 @@ const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
         error: error?.message || "No se pudo leer Firestore.",
       },
     });
-    return fallback;
+    return { ok: false, value: fallback, error };
   }
 };
 
@@ -251,16 +251,16 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const detail = { user: user?.email, role };
 
   const [
-    empleados,
-    patologias,
-    parametrosRiesgo,
-    validaciones,
-    historial,
-    borradores,
-    planes,
-    alertas,
-    indicadorAlertasInicial,
-    indicadorRiesgoInicial,
+    empleadosResult,
+    patologiasResult,
+    parametrosRiesgoResult,
+    validacionesResult,
+    historialResult,
+    borradoresResult,
+    planesResult,
+    alertasResult,
+    indicadorAlertasResult,
+    indicadorRiesgoResult,
   ] =
     await Promise.all([
       fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
@@ -278,10 +278,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
             "firebase_hydration_failed",
             detail,
           )
-        : Promise.resolve([]),
+        : Promise.resolve({ ok: true, value: [], error: null }),
       canReadClinical
         ? fetchOrFallback(listHistorial, [], "firebase_hydration_failed", detail)
-        : Promise.resolve([]),
+        : Promise.resolve({ ok: true, value: [], error: null }),
       fetchOrFallback(listBorradores, [], "firebase_hydration_failed", detail),
       canReadClinical
         ? fetchOrFallback(
@@ -290,7 +290,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
             "firebase_hydration_failed",
             detail,
           )
-        : Promise.resolve([]),
+        : Promise.resolve({ ok: true, value: [], error: null }),
       canReadClinical
         ? fetchOrFallback(
             listAlertasRiesgo,
@@ -298,7 +298,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
             "firebase_hydration_failed",
             detail,
           )
-        : Promise.resolve([]),
+        : Promise.resolve({ ok: true, value: [], error: null }),
       fetchOrFallback(
         getIndicadorAlertas,
         null,
@@ -313,38 +313,75 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       ),
     ]);
 
+  const empleados = empleadosResult.value;
+  const patologias = patologiasResult.value;
+  const parametrosRiesgo = parametrosRiesgoResult.value;
+  const validaciones = validacionesResult.value;
+  const historial = historialResult.value;
+  const borradores = borradoresResult.value;
+  const planes = planesResult.value;
+  const alertas = alertasResult.value;
+  const indicadorAlertasInicial = indicadorAlertasResult.value;
+  const indicadorRiesgoInicial = indicadorRiesgoResult.value;
+
   let indicadorAlertas = indicadorAlertasInicial;
+  let indicadorAlertasFresh = indicadorAlertasResult.ok;
   if (
-    !indicadorAlertas ||
-    indicadorAlertas.version !== "alert-summary-v2"
+    indicadorAlertasResult.ok &&
+    (!indicadorAlertas ||
+      indicadorAlertas.version !== "alert-summary-v2") &&
+    (typeof navigator === "undefined" || navigator.onLine !== false)
   ) {
-    indicadorAlertas = await fetchOrFallback(
+    const rebuildResult = await fetchOrFallback(
       rebuildFirebaseAlertSummary,
       null,
       "firebase_alert_summary_rebuild_failed",
       detail,
     );
+    if (rebuildResult.ok) {
+      indicadorAlertas = rebuildResult.value;
+      indicadorAlertasFresh = true;
+    }
   }
   let indicadorRiesgo = indicadorRiesgoInicial;
-  if (!indicadorRiesgo) {
-    indicadorRiesgo = await fetchOrFallback(
+  let indicadorRiesgoFresh = indicadorRiesgoResult.ok;
+  if (
+    indicadorRiesgoResult.ok &&
+    !indicadorRiesgo &&
+    (typeof navigator === "undefined" || navigator.onLine !== false)
+  ) {
+    const rebuildResult = await fetchOrFallback(
       rebuildFirebaseRiskIndicator,
       null,
       "firebase_risk_indicator_rebuild_failed",
       detail,
     );
+    if (rebuildResult.ok) {
+      indicadorRiesgo = rebuildResult.value;
+      indicadorRiesgoFresh = true;
+    }
   }
 
-  replaceEmployees(empleados.map(normalizeEmployee));
-  replaceRiskConfig({
-    parameters: parametrosRiesgo || {},
-    pathologies: patologias,
-  });
+  if (empleadosResult.ok) {
+    replaceEmployees(empleados.map(normalizeEmployee));
+  }
+  if (patologiasResult.ok && parametrosRiesgoResult.ok) {
+    replaceRiskConfig({
+      parameters: parametrosRiesgo || {},
+      pathologies: patologias,
+    });
+  }
 
   if (canReadClinical) {
-    replaceValidationQueue(validaciones.map(normalizeValidation));
+    if (validacionesResult.ok) {
+      replaceValidationQueue(validaciones.map(normalizeValidation));
+    }
+  } else {
+    replaceValidationQueue([]);
   }
-  replaceDrafts(borradores.map(normalizeDraft));
+  if (borradoresResult.ok) {
+    replaceDrafts(borradores.map(normalizeDraft));
+  }
 
   const historyByEmployee = {};
   historial.forEach((doc) => {
@@ -356,8 +393,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       record,
     ];
   });
-  if (canReadClinical) {
+  if (canReadClinical && historialResult.ok) {
     replaceAllHistory(historyByEmployee);
+  } else if (!canReadClinical) {
+    replaceAllHistory({});
   }
 
   const plansByEmployee = {};
@@ -366,17 +405,45 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     plansByEmployee[doc.employeeId || doc.id] = normalizePlan(doc);
   });
   if (canReadClinical) {
-    replaceAllPlans(plansByEmployee);
-    replaceRiskAlerts(alertas.map(normalizeRiskAlert));
+    if (planesResult.ok) replaceAllPlans(plansByEmployee);
+    if (alertasResult.ok) {
+      replaceRiskAlerts(alertas.map(normalizeRiskAlert));
+    }
+  } else {
+    replaceAllPlans({});
+    replaceRiskAlerts([]);
   }
-  replaceRiskAlertSummary(
-    indicadorAlertas ? normalizeRiskAlertSummary(indicadorAlertas) : null,
-  );
-  replaceRiskIndicator(
-    indicadorRiesgo ? normalizeRiskIndicator(indicadorRiesgo) : null,
-  );
+  if (indicadorAlertasFresh) {
+    replaceRiskAlertSummary(
+      indicadorAlertas ? normalizeRiskAlertSummary(indicadorAlertas) : null,
+    );
+  }
+  if (indicadorRiesgoFresh) {
+    replaceRiskIndicator(
+      indicadorRiesgo ? normalizeRiskIndicator(indicadorRiesgo) : null,
+    );
+  }
 
-  appendAuditLog("firebase_hydration_success", {
+  const failedCollections = [
+    ["empleados", empleadosResult],
+    ["patologias", patologiasResult],
+    ["parametros_riesgo", parametrosRiesgoResult],
+    ["validaciones_medicas", validacionesResult],
+    ["historial_medico", historialResult],
+    ["borradores", borradoresResult],
+    ["planes_preventivos", planesResult],
+    ["alertas_riesgo", alertasResult],
+    ["indicadores_alertas", indicadorAlertasResult],
+    ["indicadores_riesgo", indicadorRiesgoResult],
+  ]
+    .filter(([, result]) => !result.ok)
+    .map(([collectionName]) => collectionName);
+
+  appendAuditLog(
+    failedCollections.length
+      ? "firebase_hydration_local_fallback"
+      : "firebase_hydration_success",
+    {
     user: user?.email,
     role,
     metadata: {
@@ -390,8 +457,11 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       alertas: alertas.length,
       indicadorAlertas: indicadorAlertas ? 1 : 0,
       indicadorRiesgo: indicadorRiesgo ? 1 : 0,
+      preservoCacheLocal: failedCollections.length > 0,
+      coleccionesNoDisponibles: failedCollections,
     },
-  });
+    },
+  );
 
   return {
     empleados: empleados.length,
@@ -404,6 +474,8 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     alertas: alertas.length,
     indicadorAlertas: indicadorAlertas ? 1 : 0,
     indicadorRiesgo: indicadorRiesgo ? 1 : 0,
+    preservedLocalCache: failedCollections.length > 0,
+    failedCollections,
   };
 };
 
@@ -412,6 +484,13 @@ const mapSnapshotDocs = (snapshot) =>
     id: docSnap.id,
     ...docSnap.data(),
   }));
+
+const shouldPreserveLocalSnapshot = (snapshot) => {
+  const offline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  if (!offline || snapshot?.metadata?.fromCache !== true) return false;
+  return "empty" in snapshot ? snapshot.empty : !snapshot.exists();
+};
 
 export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
   const clinicalRoles = ["superAdmin", "medico", "administrativoSalud"];
@@ -424,6 +503,7 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
       onSnapshot(
         collection(db, "validaciones_medicas"),
         (snapshot) => {
+          if (shouldPreserveLocalSnapshot(snapshot)) return;
           replaceValidationQueue(
             mapSnapshotDocs(snapshot).map(normalizeValidation),
           );
@@ -444,6 +524,7 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
       onSnapshot(
         collection(db, "alertas_riesgo"),
         (snapshot) => {
+          if (shouldPreserveLocalSnapshot(snapshot)) return;
           replaceRiskAlerts(mapSnapshotDocs(snapshot).map(normalizeRiskAlert));
         },
         (error) => {
@@ -464,6 +545,7 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
     onSnapshot(
       doc(db, "indicadores_alertas", "global"),
       (snapshot) => {
+        if (shouldPreserveLocalSnapshot(snapshot)) return;
         replaceRiskAlertSummary(
           snapshot.exists()
             ? normalizeRiskAlertSummary(snapshot.data())
@@ -487,6 +569,7 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
     onSnapshot(
       doc(db, "indicadores_riesgo", "global"),
       (snapshot) => {
+        if (shouldPreserveLocalSnapshot(snapshot)) return;
         replaceRiskIndicator(
           snapshot.exists() ? normalizeRiskIndicator(snapshot.data()) : null,
         );
@@ -508,6 +591,7 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
     onSnapshot(
       collection(db, "borradores"),
       (snapshot) => {
+        if (shouldPreserveLocalSnapshot(snapshot)) return;
         replaceDrafts(mapSnapshotDocs(snapshot).map(normalizeDraft));
       },
       (error) => {

@@ -229,6 +229,7 @@ const getCurrentTimestamp = () =>
 
 function MedicalValidation({ isDark, onToggleTheme }) {
   const auth = useContext(AuthContext);
+  const queueOwnerIds = [auth?.user?.uid, auth?.user?.email].filter(Boolean);
   const reviewerName =
     auth?.user?.fullName ||
     auth?.user?.roleLabel ||
@@ -671,7 +672,7 @@ function MedicalValidation({ isDark, onToggleTheme }) {
         entityId: updatedEntry.reference,
       },
     );
-    processOperationQueue();
+    processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     setReviewNotes("");
     setRiskScoreError(false);
     closeModal();

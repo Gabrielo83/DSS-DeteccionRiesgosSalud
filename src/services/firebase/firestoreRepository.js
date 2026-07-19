@@ -1,6 +1,8 @@
 import {
   deleteDoc,
   doc,
+  getDoc,
+  runTransaction,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -48,7 +50,12 @@ const stripTransientFileData = (value) => {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([key]) => key !== "previewUrl")
+        .filter(
+          ([key]) =>
+            !["previewUrl", "previewBlob", "offlineAttachmentKey"].includes(
+              key,
+            ),
+        )
         .map(([key, entryValue]) => [key, stripTransientFileData(entryValue)]),
     );
   }
@@ -63,23 +70,64 @@ const sanitizeFileName = (name = "certificado") =>
     .replace(/_+/g, "_")
     .slice(0, 120) || "certificado";
 
+const FINAL_STATUSES = new Set(["validado", "rechazado"]);
+const normalizeStatus = (value) => String(value || "").trim().toLowerCase();
+
+class SyncConflictError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "SyncConflictError";
+    this.code = "sync-conflict";
+    this.retryable = false;
+  }
+}
+
+const assertClinicalWriteAllowed = (existing, operation) => {
+  if (!existing) return;
+  const sameOperation = existing.sourceOperationId === operation.id;
+  const existingStatus = normalizeStatus(existing.estado || existing.status);
+  if (!sameOperation && FINAL_STATUSES.has(existingStatus)) {
+    throw new SyncConflictError(
+      "La operacion local no puede reemplazar una decision medica final mas reciente.",
+    );
+  }
+};
+
+const buildSyncMetadata = (operation, existing = {}) => ({
+  sourceOperationId: operation.id,
+  syncVersion:
+    existing.sourceOperationId === operation.id
+      ? Number(existing.syncVersion || 1)
+      : Number(existing.syncVersion || 0) + 1,
+  clientUpdatedAt: operation.createdAt || null,
+  conflictPolicy: "decision-clinica-no-sobrescribible",
+  updatedAt: serverTimestamp(),
+});
+
 const dataUrlToBlob = async (dataUrl) => {
   if (!dataUrl || !String(dataUrl).startsWith("data:")) return null;
   const response = await fetch(dataUrl);
   return response.blob();
 };
 
-const uploadCertificateFile = async (storage, reference, certificate) => {
+const uploadCertificateFile = async (
+  storage,
+  reference,
+  certificate,
+  operationId,
+) => {
   const fileMeta = certificate?.certificateFileMeta;
-  if (!fileMeta?.previewUrl || fileMeta.storagePath || fileMeta.downloadUrl) {
+  const hasLocalFile = fileMeta?.previewBlob || fileMeta?.previewUrl;
+  if (!hasLocalFile || fileMeta.storagePath || fileMeta.downloadUrl) {
     return certificate;
   }
 
-  const blob = await dataUrlToBlob(fileMeta.previewUrl);
+  const blob = fileMeta.previewBlob || (await dataUrlToBlob(fileMeta.previewUrl));
   if (!blob) return certificate;
 
   const safeName = sanitizeFileName(fileMeta.name);
-  const storagePath = `certificados/${reference}/${Date.now()}-${safeName}`;
+  const safeOperationId = sanitizeFileName(operationId || reference);
+  const storagePath = `certificados/${reference}/${safeOperationId}-${safeName}`;
   const storageReference = ref(storage, storagePath);
   let downloadUrl = "";
   try {
@@ -130,6 +178,7 @@ const prepareSubmitCertificateOperation = async (storage, operation) => {
     storage,
     reference,
     certificate,
+    operation.id,
   );
   return {
     ...operation,
@@ -140,7 +189,7 @@ const prepareSubmitCertificateOperation = async (storage, operation) => {
   };
 };
 
-const buildBasePayload = (operation) =>
+const buildBasePayload = (operation, syncStatus = "processing", error = null) =>
   stripUndefined({
     id: operation.id,
     type: operation.type,
@@ -149,13 +198,21 @@ const buildBasePayload = (operation) =>
     entityId: operation.entityId || null,
     localCreatedAt: operation.createdAt || null,
     retryCount: operation.retryCount || 0,
-    syncedAt: serverTimestamp(),
+    syncStatus,
+    syncError: error,
+    attemptedAt: serverTimestamp(),
+    ...(syncStatus === "synced" ? { syncedAt: serverTimestamp() } : {}),
   });
 
-const writeOperationAudit = async (db, operation) => {
+const writeOperationAudit = async (
+  db,
+  operation,
+  syncStatus = "processing",
+  error = null,
+) => {
   await setDoc(
     doc(db, "operations", operation.id),
-    buildBasePayload(operation),
+    buildBasePayload(operation, syncStatus, error),
     { merge: true },
   );
 };
@@ -163,15 +220,23 @@ const writeOperationAudit = async (db, operation) => {
 const writeDraft = async (db, operation) => {
   const draft = operation.payload?.payload || operation.payload || {};
   const draftId = draft.draftId || operation.payload?.draftId || operation.id;
-  await setDoc(
-    doc(db, "borradores", draftId),
-    stripUndefined(stripTransientFileData({
-      ...mapDraftPayloadToFirestore(draft),
-      sourceOperationId: operation.id,
-      updatedAt: serverTimestamp(),
-    })),
-    { merge: true },
-  );
+  const draftRef = doc(db, "borradores", draftId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(draftRef);
+    const existing = snapshot.data() || {};
+    transaction.set(
+      draftRef,
+      stripUndefined(stripTransientFileData({
+        ...mapDraftPayloadToFirestore(draft),
+        sourceOperationId: operation.id,
+        syncVersion: Number(existing.syncVersion || 0) + 1,
+        clientUpdatedAt: operation.createdAt || null,
+        conflictPolicy: "ultima-escritura-para-borradores",
+        updatedAt: serverTimestamp(),
+      })),
+      { merge: true },
+    );
+  });
 };
 
 const deleteDraft = async (db, operation) => {
@@ -190,50 +255,57 @@ const writeCertificate = async (db, operation) => {
   if (!reference) {
     throw new Error("No se pudo sincronizar certificado sin referencia.");
   }
-  await setDoc(
-    doc(db, "validaciones_medicas", reference),
-    stripUndefined(stripTransientFileData({
-      ...mapValidationEntryToFirestore(certificate),
-      reference,
-      sourceOperationId: operation.id,
-      creadoEn: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })),
-    { merge: true },
-  );
-  await setDoc(
-    doc(db, "ausencias", reference),
-    stripUndefined(stripTransientFileData({
-      ...mapAbsenceFormToFirestore({
-        formValues: {
-          absenceId: reference,
-          employeeId: certificate.employeeId,
-          employeeName: certificate.employee,
-          sector: certificate.sector,
-          position: certificate.position,
-          absenceType: certificate.absenceType,
-          detailedReason: certificate.detailedReason,
-          pathologyCategory: certificate.pathologyCategory,
-          cieCode: certificate.cieCode,
-          additionalNotes: certificate.notes,
-          startDate: certificate.startDate,
-          endDate: certificate.endDate,
-        },
-        absenceDays: certificate.absenceDays,
-        certificateInstitution: certificate.institution,
-        certificateFileMeta: certificate.certificateFileMeta,
-        certificateReference: reference,
-        requiresApproval: "si",
-        status: "enviado",
-        createdBy: operation.user,
-      }),
-      absenceId: reference,
-      sourceOperationId: operation.id,
-      creadoEn: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })),
-    { merge: true },
-  );
+  const validationRef = doc(db, "validaciones_medicas", reference);
+  const absenceRef = doc(db, "ausencias", reference);
+  await runTransaction(db, async (transaction) => {
+    const validationSnapshot = await transaction.get(validationRef);
+    const existing = validationSnapshot.data() || {};
+    assertClinicalWriteAllowed(existing, operation);
+    if (existing.sourceOperationId === operation.id) return;
+
+    transaction.set(
+      validationRef,
+      stripUndefined(stripTransientFileData({
+        ...mapValidationEntryToFirestore(certificate),
+        reference,
+        creadoEn: serverTimestamp(),
+        ...buildSyncMetadata(operation, existing),
+      })),
+      { merge: true },
+    );
+    transaction.set(
+      absenceRef,
+      stripUndefined(stripTransientFileData({
+        ...mapAbsenceFormToFirestore({
+          formValues: {
+            absenceId: reference,
+            employeeId: certificate.employeeId,
+            employeeName: certificate.employee,
+            sector: certificate.sector,
+            position: certificate.position,
+            absenceType: certificate.absenceType,
+            detailedReason: certificate.detailedReason,
+            pathologyCategory: certificate.pathologyCategory,
+            cieCode: certificate.cieCode,
+            additionalNotes: certificate.notes,
+            startDate: certificate.startDate,
+            endDate: certificate.endDate,
+          },
+          absenceDays: certificate.absenceDays,
+          certificateInstitution: certificate.institution,
+          certificateFileMeta: certificate.certificateFileMeta,
+          certificateReference: reference,
+          requiresApproval: "si",
+          status: "enviado",
+          createdBy: operation.user,
+        }),
+        absenceId: reference,
+        creadoEn: serverTimestamp(),
+        ...buildSyncMetadata(operation),
+      })),
+      { merge: true },
+    );
+  });
 };
 
 const writeCertificateDecision = async (db, operation) => {
@@ -248,27 +320,31 @@ const writeCertificateDecision = async (db, operation) => {
       ([key]) => !["validationEntry", "historyRecord"].includes(key),
     ),
   );
-  await setDoc(
-    doc(db, "validaciones_medicas", reference),
+  const validationRef = doc(db, "validaciones_medicas", reference);
+  await runTransaction(db, async (transaction) => {
+    const validationSnapshot = await transaction.get(validationRef);
+    const existing = validationSnapshot.data() || {};
+    assertClinicalWriteAllowed(existing, operation);
+
+    transaction.set(
+    validationRef,
     stripUndefined(stripTransientFileData({
       ...(validationEntry ? mapValidationEntryToFirestore(validationEntry) : {}),
       ...decisionPayload,
       reference,
-      sourceOperationId: operation.id,
       revisadoEn: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      ...buildSyncMetadata(operation, existing),
     })),
     { merge: true },
   );
   if (historyRecord) {
-    await setDoc(
+    transaction.set(
       doc(db, "historial_medico", reference),
       stripUndefined(stripTransientFileData({
         ...mapHistoryRecordToFirestore(historyRecord),
         historyId: reference,
         reference,
-        sourceOperationId: operation.id,
-        updatedAt: serverTimestamp(),
+        ...buildSyncMetadata(operation),
       })),
       { merge: true },
     );
@@ -279,7 +355,7 @@ const writeCertificateDecision = async (db, operation) => {
       validationEntry.planFollowUps?.length ||
       validationEntry.planRecommendations?.length)
   ) {
-    await setDoc(
+    transaction.set(
       doc(db, "planes_preventivos", validationEntry.employeeId),
       stripUndefined({
         ...mapPlanPreventivoToFirestore(
@@ -296,37 +372,58 @@ const writeCertificateDecision = async (db, operation) => {
             puesto: validationEntry.position,
           },
         ),
-        sourceOperationId: operation.id,
-        updatedAt: serverTimestamp(),
+        ...buildSyncMetadata(operation),
       }),
       { merge: true },
     );
   }
+  });
 };
 
 export const syncOperationToFirestore = async (operation) => {
   const { db, storage } = getFirebaseServices();
+  if (operation.type === "submitCertificate") {
+    const certificate = operation.payload?.certificate || operation.payload || {};
+    const reference =
+      certificate.reference || operation.payload?.reference || operation.entityId;
+    if (reference) {
+      const snapshot = await getDoc(doc(db, "validaciones_medicas", reference));
+      assertClinicalWriteAllowed(snapshot.data(), operation);
+    }
+  }
   const preparedOperation =
     operation.type === "submitCertificate"
       ? await prepareSubmitCertificateOperation(storage, operation)
       : operation;
 
-  await writeOperationAudit(db, preparedOperation);
+  await writeOperationAudit(db, preparedOperation, "processing");
 
-  if (preparedOperation.type === "saveDraft") {
-    await writeDraft(db, preparedOperation);
-  }
+  try {
+    if (preparedOperation.type === "saveDraft") {
+      await writeDraft(db, preparedOperation);
+    }
 
-  if (preparedOperation.type === "deleteDraft") {
-    await deleteDraft(db, preparedOperation);
-  }
+    if (preparedOperation.type === "deleteDraft") {
+      await deleteDraft(db, preparedOperation);
+    }
 
-  if (preparedOperation.type === "submitCertificate") {
-    await writeCertificate(db, preparedOperation);
-  }
+    if (preparedOperation.type === "submitCertificate") {
+      await writeCertificate(db, preparedOperation);
+    }
 
-  if (preparedOperation.type === "validateCertificate") {
-    await writeCertificateDecision(db, preparedOperation);
+    if (preparedOperation.type === "validateCertificate") {
+      await writeCertificateDecision(db, preparedOperation);
+    }
+
+    await writeOperationAudit(db, preparedOperation, "synced");
+  } catch (error) {
+    await writeOperationAudit(
+      db,
+      preparedOperation,
+      error?.code === "sync-conflict" ? "conflict" : "failed",
+      error?.message || "Error de sincronizacion",
+    ).catch(() => {});
+    throw error;
   }
 
   return { ok: true };

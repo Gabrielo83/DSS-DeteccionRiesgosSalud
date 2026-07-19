@@ -1,6 +1,11 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -21,6 +26,25 @@ const requiredKeys = [
   "messagingSenderId",
   "appId",
 ];
+
+const trustedDevicePersistence =
+  String(import.meta.env.VITE_FIREBASE_TRUSTED_DEVICE || "")
+    .trim()
+    .toLowerCase() === "true";
+
+let firestoreDb = null;
+
+const getFirebaseDb = (app) => {
+  if (firestoreDb) return firestoreDb;
+  firestoreDb = initializeFirestore(app, {
+    localCache: trustedDevicePersistence
+      ? persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        })
+      : memoryLocalCache(),
+  });
+  return firestoreDb;
+};
 
 export const getMissingFirebaseConfig = () =>
   requiredKeys.filter((key) => !firebaseConfig[key]);
@@ -44,10 +68,16 @@ export const getFirebaseServices = () => {
   return {
     app,
     auth: getAuth(app),
-    db: getFirestore(app),
+    db: getFirebaseDb(app),
     storage: getStorage(app),
   };
 };
+
+export const getFirebaseOfflineConfig = () => ({
+  trustedDevice: trustedDevicePersistence,
+  cache: trustedDevicePersistence ? "persistent-indexeddb" : "memory",
+  tabMode: trustedDevicePersistence ? "multiple" : "none",
+});
 
 export const getFirebaseAnalytics = async () => {
   const app = getFirebaseApp();

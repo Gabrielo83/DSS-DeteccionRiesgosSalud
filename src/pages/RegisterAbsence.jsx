@@ -12,6 +12,7 @@ import {
   readDrafts,
   saveDraft,
   removeDraft,
+  restoreDraftAttachment,
 } from "../utils/draftStorage.js";
 import {
   ABSENCE_DRAFTS_UPDATED_EVENT,
@@ -301,6 +302,7 @@ const createInitialFormValues = () => ({
 function RegisterAbsence({ isDark, onToggleTheme }) {
   const auth = useContext(AuthContext);
   const currentUserName = auth?.user?.fullName || "Usuario no identificado";
+  const queueOwnerIds = [auth?.user?.uid, auth?.user?.email].filter(Boolean);
   const [employees, setEmployees] = useState(() =>
     typeof window === "undefined" ? [] : readEmployees(),
   );
@@ -558,28 +560,29 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
     setActiveRevisionEntry(null);
   };
 
-  const handleDraftLoad = (draft) => {
+  const handleDraftLoad = async (draft) => {
     if (!draft) return;
+    const restoredDraft = await restoreDraftAttachment(draft);
     setFormValues({
       ...createInitialFormValues(),
-      ...(draft.formValues || {}),
+      ...(restoredDraft.formValues || {}),
     });
-    setAbsenceDays(draft.absenceDays ?? null);
-    setCertificateInstitution(draft.certificateInstitution ?? "");
-    setCertificateFile(draft.certificateFile ?? null);
-    setCertificateReference(draft.certificateReference ?? null);
-    setActiveDraftId(draft.draftId);
+    setAbsenceDays(restoredDraft.absenceDays ?? null);
+    setCertificateInstitution(restoredDraft.certificateInstitution ?? "");
+    setCertificateFile(restoredDraft.certificateFile ?? null);
+    setCertificateReference(restoredDraft.certificateReference ?? null);
+    setActiveDraftId(restoredDraft.draftId);
     setActiveRevisionEntry(null);
     setSubmissionFeedback(
-      `Borrador ${draft.draftId} cargado para continuar con la edicion.`,
+      `Borrador ${restoredDraft.draftId} cargado para continuar con la edicion.`,
     );
     setToastState({
       visible: true,
-      message: `Reanudaste el borrador ${draft.draftId}.`,
+      message: `Reanudaste el borrador ${restoredDraft.draftId}.`,
       tone: "bg-indigo-600 text-white",
     });
-    if (draft.savedAt) {
-      setLastUpdatedAt(draft.savedAt);
+    if (restoredDraft.savedAt) {
+      setLastUpdatedAt(restoredDraft.savedAt);
     }
   };
 
@@ -595,7 +598,7 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
         entityId: draftId,
       },
     );
-    processOperationQueue();
+    processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     if (activeDraftId === draftId) {
       resetForm();
     }
@@ -1053,7 +1056,7 @@ const clearCertificateFile = () => {
         },
         { user: auth?.user?.email || currentUserName },
       );
-      processOperationQueue();
+      processOperationQueue(undefined, { ownerIds: queueOwnerIds });
       setToastState({
         visible: true,
         message: "Borrador guardado para completar mas tarde.",
@@ -1085,7 +1088,7 @@ const clearCertificateFile = () => {
           entityId: result.reference,
         },
       );
-      processOperationQueue();
+      processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     }
     if (draftIdToClear) {
       removeDraft(draftIdToClear);
@@ -1098,7 +1101,7 @@ const clearCertificateFile = () => {
           entityId: draftIdToClear,
         },
       );
-      processOperationQueue();
+      processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     }
     resetForm();
     if (result?.reference) {

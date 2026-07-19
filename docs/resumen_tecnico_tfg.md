@@ -6,7 +6,7 @@ Objetivo del documento: centralizar decisiones tecnicas, implementaciones cerrad
 
 ## Estado general
 
-- Rama principal de trabajo Firebase/Cloud Functions: `feature/cloud-functions`.
+- Rama actual de endurecimiento local-first: `feature/offline-first`, derivada de `feature/cloud-functions`.
 - Proyecto Firebase: `dss-ausentismo`.
 - El sistema mantiene dos modos defendibles:
   - Modo local: usa `localStorage` e IndexedDB para ejecutar el sistema sin dependencia remota.
@@ -158,7 +158,7 @@ Colecciones principales:
 
 Storage:
 
-- Ruta de certificados: `certificados/{reference}/{timestamp}-{archivo}`.
+- Ruta idempotente de certificados: `certificados/{reference}/{operationId}-{archivo}`.
 - No se persiste base64 en Firestore.
 - Se guarda:
   - `rutaStorage`
@@ -201,6 +201,35 @@ Implementado:
   - `validaciones_medicas`
   - `borradores`
 - Dos navegadores con usuarios distintos reciben cambios sin recargar pagina completa.
+
+## Local-First / Offline-First
+
+Implementado:
+
+- Persistencia web de Firestore configurable y deshabilitada por defecto; se activa solo en dispositivos confiables con `VITE_FIREBASE_TRUSTED_DEVICE=true`.
+- IndexedDB conserva datos operativos, cola y adjuntos temporales como `Blob`.
+- La cola no guarda archivos base64 y procesa operaciones en orden cronologico.
+- El sincronizador reacciona al evento `online` y usa backoff exponencial de 5 segundos a 5 minutos, con ocho intentos automaticos.
+- Las operaciones tienen ID idempotente, propietario de sesion, version de esquema y estado de conflicto.
+- Solo el UID o correo propietario puede procesar una operacion pendiente.
+- La ruta de Storage deriva del ID de operacion y evita archivos duplicados por reintentos.
+- Firestore recibe `sourceOperationId`, `syncVersion`, `clientUpdatedAt` y timestamp del servidor.
+- Politica de conflicto explicita:
+  - borradores: ultima escritura
+  - decisiones clinicas finales: no se sobrescriben desde una operacion local antigua
+- Una hidratacion fallida preserva la ultima cache valida, sin reemplazarla por datos vacios.
+- Al cerrar sesion Firebase se limpian historiales, validaciones, planes, borradores y nomina hidratada; se preservan operaciones pendientes para no perder trabajo.
+- El build de produccion puede cachear el shell con `VITE_ENABLE_OFFLINE_SHELL=true`.
+- Cloud Functions se ejecuta despues de recuperar conectividad y sincronizar Firestore; no se simula su ejecucion offline.
+
+Pruebas automatizadas:
+
+- aislamiento de cola por usuario
+- conservacion de operaciones sin conectividad
+- backoff exponencial limitado
+- conflictos no reintentables
+
+Detalle y guion de prueba: `docs/OFFLINE_FIRST_DEFENSA.md`.
 
 ## Flujo de certificados
 

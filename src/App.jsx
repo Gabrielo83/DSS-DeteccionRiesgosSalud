@@ -12,6 +12,8 @@ import { startQueueSync } from "./utils/operationQueue.js";
 import { appendAuditLog } from "./utils/auditLog.js";
 import { isFirebaseProvider } from "./services/appMode.js";
 import { initializePerformanceMonitoring } from "./services/observability.js";
+import { clearSensitiveOperationalCache } from "./utils/sensitiveCache.js";
+import { registerOfflineShell } from "./services/offlineShell.js";
 
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000;
 const SESSION_LAST_ACTIVITY_KEY = "sessionLastActivityAt";
@@ -129,15 +131,20 @@ function App() {
   };
 
   useEffect(() => {
-    const stop = startQueueSync();
+    if (!isAuthenticated || !currentUser) return undefined;
+    const ownerIds = [currentUser.uid, currentUser.email].filter(Boolean);
+    const stop = startQueueSync(undefined, { ownerIds });
     return () => {
       if (typeof stop === "function") stop();
     };
-  }, []);
+  }, [currentUser, isAuthenticated]);
 
   useEffect(() => {
     if (!isFirebaseEnabled) return;
     initializePerformanceMonitoring();
+    registerOfflineShell().catch((error) => {
+      console.warn("No se pudo registrar el shell offline:", error);
+    });
   }, [isFirebaseEnabled]);
 
   useEffect(() => {
@@ -238,6 +245,7 @@ function App() {
       setIsAuthenticated(false);
       setRoleMissing(false);
       clearStoredSession();
+      if (isFirebaseEnabled) clearSensitiveOperationalCache();
       appendAuditLog(reason === "timeout" ? "session_expired" : "logout", {
         user: previousUser?.email || "sesion-local",
         role: previousRole || "sin-rol",

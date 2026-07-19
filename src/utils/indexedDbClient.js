@@ -1,6 +1,13 @@
 const DB_NAME = "dss-salud-ocupacional";
-const DB_VERSION = 2;
-const STORE_NAMES = ["validations", "history", "plans", "drafts", "queue"];
+const DB_VERSION = 3;
+const STORE_NAMES = [
+  "validations",
+  "history",
+  "plans",
+  "drafts",
+  "queue",
+  "attachments",
+];
 
 let dbPromise = null;
 const hasIndexedDb = typeof indexedDB !== "undefined";
@@ -73,3 +80,19 @@ export const readAllEntities = async (storeName) =>
         },
       )
     : Promise.resolve([]);
+
+export const deleteEntitiesByKeyPrefix = async (storeName, prefix) => {
+  if (!hasIndexedDb || !prefix) return;
+  return withTx(storeName, "readwrite", (store) => {
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      if (String(cursor.key).startsWith(prefix)) cursor.delete();
+      cursor.continue();
+    };
+    return request;
+  }).catch((error) =>
+    console.warn(`IDB prefix delete failed (${storeName}/${prefix}):`, error),
+  );
+};
