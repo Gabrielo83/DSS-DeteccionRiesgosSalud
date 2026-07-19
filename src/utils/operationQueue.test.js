@@ -5,6 +5,7 @@ import {
   enqueueOperation,
   processQueue,
   readOperationQueue,
+  recoverInterruptedOperations,
 } from "./operationQueue.js";
 
 const setOnline = (online) => {
@@ -74,6 +75,32 @@ describe("operationQueue offline-first", () => {
       id: "op-conflict",
       status: "conflict",
       nextAttemptAt: null,
+    });
+  });
+
+  it("recupera operaciones bloqueadas por un chunk obsoleto", () => {
+    enqueueOperation("saveDraft", {}, { id: "op-stale", user: "u@test" });
+    const queue = readOperationQueue();
+    window.localStorage.setItem(
+      "app_operation_queue",
+      JSON.stringify([
+        {
+          ...queue[0],
+          status: "failed",
+          retryCount: 8,
+          nextAttemptAt: "2099-01-01T00:00:00.000Z",
+          lastError:
+            "Failed to fetch dynamically imported module: /assets/old.js",
+        },
+      ]),
+    );
+
+    expect(recoverInterruptedOperations()).toBe(1);
+    expect(readOperationQueue()[0]).toMatchObject({
+      status: "pending",
+      retryCount: 0,
+      nextAttemptAt: null,
+      lastError: null,
     });
   });
 });

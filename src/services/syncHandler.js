@@ -1,4 +1,5 @@
 import { isFirebaseProvider } from "./appMode.js";
+import { syncOperationToFirestore } from "./firebase/firestoreRepository.js";
 
 const hasNavigator = () => typeof navigator !== "undefined";
 
@@ -15,8 +16,5 @@ export const syncOperation = async (operation) => {
   if (!isFirebaseProvider()) {
     return simulateLocalSync(operation);
   }
-  const { syncOperationToFirestore } = await import(
-    "./firebase/firestoreRepository.js"
-  );
   return syncOperationToFirestore(operation);
 };

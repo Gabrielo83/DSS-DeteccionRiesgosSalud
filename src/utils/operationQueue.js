@@ -22,6 +22,11 @@ const BASE_RETRY_DELAY_MS = 5000;
 const MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const MAX_RETRY_COUNT = 8;
 const pendingAttachmentWrites = new Map();
+const RECOVERABLE_ASSET_ERRORS = [
+  "failed to fetch dynamically imported module",
+  "importing a module script failed",
+  "chunkloaderror",
+];
 
 export const calculateRetryDelay = (retryCount) =>
   Math.min(
@@ -164,6 +169,36 @@ const persistQueue = (queue) => {
 };
 
 export const readOperationQueue = () => readRawQueue();
+
+export const recoverInterruptedOperations = () => {
+  const queue = readRawQueue();
+  let recovered = 0;
+  const updated = queue.map((operation) => {
+    const lastError = String(operation.lastError || "").toLowerCase();
+    const recoverable = RECOVERABLE_ASSET_ERRORS.some((message) =>
+      lastError.includes(message),
+    );
+    if (!recoverable) return operation;
+    recovered += 1;
+    return {
+      ...operation,
+      status: "pending",
+      retryCount: 0,
+      nextAttemptAt: null,
+      lastError: null,
+    };
+  });
+  if (recovered > 0) {
+    persistQueue(updated);
+    appendAuditLog("sync_operations_recovered", {
+      metadata: {
+        recovered,
+        reason: "stale_application_asset",
+      },
+    });
+  }
+  return recovered;
+};
 
 const buildOperation = (type, payload, meta = {}) => ({
   id: meta.id || `op-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -353,6 +388,7 @@ export const clearOperationQueue = () => persistQueue([]);
 export const startQueueSync = (handler, { ownerIds = [] } = {}) => {
   if (!isBrowser()) return () => {};
   if (!ownerIds.filter(Boolean).length) return () => {};
+  recoverInterruptedOperations();
   let syncing = false;
 
   const runSync = async () => {

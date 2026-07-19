@@ -30,6 +30,7 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 
 - Sin red, las operaciones permanecen pendientes y no se descartan.
 - Los fallos transitorios usan backoff exponencial y un maximo de ocho intentos automaticos.
+- El repositorio de sincronizacion se incluye en el bundle inicial para evitar que un despliegue cambie el nombre de un chunk requerido por operaciones offline. Si se detecta ese error en una cola anterior, sus reintentos se recuperan automaticamente.
 - Los fallos no recuperables quedan en estado `failed`.
 - Una hidratacion remota fallida conserva la ultima copia local valida; no la reemplaza por arreglos vacios.
 - Mientras el navegador esta offline se ignoran snapshots de la cache remota anterior. Al reconectar, los borradores y validaciones con operaciones pendientes conservan prioridad local hasta finalizar la sincronizacion.
