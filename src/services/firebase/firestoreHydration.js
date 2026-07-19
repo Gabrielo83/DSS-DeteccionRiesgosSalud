@@ -12,12 +12,16 @@ import {
 } from "../../utils/firestoreEntities.js";
 import { collection, doc, onSnapshot } from "firebase/firestore";
 import { getFirebaseServices } from "./firebaseClient.js";
-import { replaceDrafts } from "../../utils/draftStorage.js";
+import { readDrafts, replaceDrafts } from "../../utils/draftStorage.js";
 import { replaceEmployees } from "../../utils/employeeStorage.js";
 import { replaceAllHistory } from "../../utils/historyStorage.js";
 import { replaceAllPlans } from "../../utils/planStorage.js";
 import { replaceRiskConfig } from "../../utils/riskConfigStorage.js";
-import { replaceValidationQueue } from "../../utils/validationStorage.js";
+import {
+  readValidationQueue,
+  replaceValidationQueue,
+} from "../../utils/validationStorage.js";
+import { readOperationQueue } from "../../utils/operationQueue.js";
 import { appendAuditLog } from "../../utils/auditLog.js";
 import {
   replaceRiskAlerts,
@@ -249,6 +253,20 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const clinicalRoles = ["superAdmin", "medico", "administrativoSalud"];
   const canReadClinical = clinicalRoles.includes(role);
   const detail = { user: user?.email, role };
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    appendAuditLog("firebase_hydration_local_fallback", {
+      ...detail,
+      metadata: {
+        preservoCacheLocal: true,
+        motivo: "navegador_sin_conexion",
+      },
+    });
+    return {
+      preservedLocalCache: true,
+      offline: true,
+      failedCollections: ["network-offline"],
+    };
+  }
 
   const [
     empleadosResult,
@@ -374,13 +392,15 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
 
   if (canReadClinical) {
     if (validacionesResult.ok) {
-      replaceValidationQueue(validaciones.map(normalizeValidation));
+      replaceValidationQueue(
+        mergeValidationsWithPendingLocal(validaciones.map(normalizeValidation)),
+      );
     }
   } else {
     replaceValidationQueue([]);
   }
   if (borradoresResult.ok) {
-    replaceDrafts(borradores.map(normalizeDraft));
+    replaceDrafts(mergeDraftsWithPendingLocal(borradores.map(normalizeDraft)));
   }
 
   const historyByEmployee = {};
@@ -485,11 +505,68 @@ const mapSnapshotDocs = (snapshot) =>
     ...docSnap.data(),
   }));
 
+const getPendingOperations = () =>
+  readOperationQueue().filter(
+    (operation) => !["synced", "failed", "conflict"].includes(operation.status),
+  );
+
+const mergeValidationsWithPendingLocal = (remoteEntries) => {
+  const pendingReferences = new Set(
+    getPendingOperations()
+      .filter((operation) =>
+        ["submitCertificate", "validateCertificate"].includes(operation.type),
+      )
+      .map((operation) => operation.entityId || operation.payload?.reference)
+      .filter(Boolean),
+  );
+  const merged = new Map(
+    remoteEntries.map((entry) => [entry.reference || entry.id, entry]),
+  );
+  readValidationQueue().forEach((entry) => {
+    const reference = entry.reference || entry.id;
+    if (pendingReferences.has(reference)) merged.set(reference, entry);
+  });
+  return [...merged.values()];
+};
+
+const mergeDraftsWithPendingLocal = (remoteDrafts) => {
+  const pendingOperations = getPendingOperations();
+  const pendingSaves = new Set(
+    pendingOperations
+      .filter((operation) => operation.type === "saveDraft")
+      .map(
+        (operation) =>
+          operation.entityId ||
+          operation.payload?.draftId ||
+          operation.payload?.payload?.draftId,
+      )
+      .filter(Boolean),
+  );
+  const pendingDeletes = new Set(
+    pendingOperations
+      .filter((operation) => operation.type === "deleteDraft")
+      .map(
+        (operation) =>
+          operation.entityId || operation.payload?.draftId || operation.payload?.id,
+      )
+      .filter(Boolean),
+  );
+  const merged = new Map(
+    remoteDrafts
+      .filter((draft) => !pendingDeletes.has(draft.draftId || draft.id))
+      .map((draft) => [draft.draftId || draft.id, draft]),
+  );
+  readDrafts().forEach((draft) => {
+    const draftId = draft.draftId || draft.id;
+    if (pendingSaves.has(draftId)) merged.set(draftId, draft);
+  });
+  return [...merged.values()];
+};
+
 const shouldPreserveLocalSnapshot = (snapshot) => {
   const offline =
     typeof navigator !== "undefined" && navigator.onLine === false;
-  if (!offline || snapshot?.metadata?.fromCache !== true) return false;
-  return "empty" in snapshot ? snapshot.empty : !snapshot.exists();
+  return offline && snapshot?.metadata?.fromCache === true;
 };
 
 export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
@@ -505,7 +582,9 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
         (snapshot) => {
           if (shouldPreserveLocalSnapshot(snapshot)) return;
           replaceValidationQueue(
-            mapSnapshotDocs(snapshot).map(normalizeValidation),
+            mergeValidationsWithPendingLocal(
+              mapSnapshotDocs(snapshot).map(normalizeValidation),
+            ),
           );
         },
         (error) => {
@@ -592,7 +671,11 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
       collection(db, "borradores"),
       (snapshot) => {
         if (shouldPreserveLocalSnapshot(snapshot)) return;
-        replaceDrafts(mapSnapshotDocs(snapshot).map(normalizeDraft));
+        replaceDrafts(
+          mergeDraftsWithPendingLocal(
+            mapSnapshotDocs(snapshot).map(normalizeDraft),
+          ),
+        );
       },
       (error) => {
         appendAuditLog("firebase_realtime_sync_failed", {

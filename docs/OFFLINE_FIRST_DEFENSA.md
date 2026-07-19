@@ -32,6 +32,7 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 - Los fallos transitorios usan backoff exponencial y un maximo de ocho intentos automaticos.
 - Los fallos no recuperables quedan en estado `failed`.
 - Una hidratacion remota fallida conserva la ultima copia local valida; no la reemplaza por arreglos vacios.
+- Mientras el navegador esta offline se ignoran snapshots de la cache remota anterior. Al reconectar, los borradores y validaciones con operaciones pendientes conservan prioridad local hasta finalizar la sincronizacion.
 - Cloud Functions no se ejecutan offline. Procesan el documento cuando la cola lo sincroniza con Firestore.
 
 ## Seguridad de cache
