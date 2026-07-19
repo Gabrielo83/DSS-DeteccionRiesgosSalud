@@ -3,6 +3,8 @@ import {
   OPERATION_QUEUE_UPDATED_EVENT,
 } from "./storageKeys.js";
 import { readEntity, saveEntity } from "./indexedDbClient.js";
+import { syncOperation } from "../services/syncHandler.js";
+import { appendAuditLog } from "./auditLog.js";
 
 const IDB_STORE = "queue";
 const IDB_KEY = "queue";
@@ -99,7 +101,10 @@ export const removeOperation = (id) => {
   persistQueue(filtered);
 };
 
-const defaultHandler = async () => {
+const defaultHandler = async (operation) => {
+  if (operation) {
+    return syncOperation(operation);
+  }
   // Simula sync remoto; en producción reemplazar por llamadas HTTP/Firebase.
   const isOffline = hasNavigator() && navigator.onLine === false;
   if (isOffline) {
@@ -142,6 +147,14 @@ export const processQueue = async (handler = defaultHandler) => {
       lastAttemptAt: attemptAt,
       retryCount: (op.retryCount || 0) + 1,
       lastError: result?.error || result?.reason || "sync failed",
+    });
+    appendAuditLog("sync_failed", {
+      user: op.user,
+      entityId: op.entityId,
+      metadata: {
+        operationType: op.type,
+        error: result?.error || result?.reason || "sync failed",
+      },
     });
   }
 

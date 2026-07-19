@@ -80,6 +80,7 @@ Roles:
 - `superAdmin`: acceso completo.
 - `medico`: acceso completo operativo.
 - `administrativo`: registra ausencias, carga documentacion y consulta dashboard operativo.
+- `administrativoSalud`: registra ausencias, carga documentacion y consulta legajos/certificados historicos por pertenecer al circuito de salud ocupacional, sin validar decisiones medicas.
 - `gerente`: consulta dashboard de indicadores y tendencias.
 - `respRRHH`: consulta dashboard y registra informacion administrativa de ausencias.
 
@@ -94,7 +95,7 @@ Como defenderlo:
 
 > La seguridad funcional esta separada entre navegacion y proteccion de rutas. Aunque un usuario escriba una URL manualmente, `ProtectedRoute` valida si su rol esta autorizado.
 
-La restriccion sobre legajos medicos se mantiene alineada con la memoria: solo `superAdmin` y `medico` acceden a la pantalla de legajos, porque contiene informacion clinica sensible. Los perfiles administrativo, RRHH y gerencia quedan limitados a informacion operativa segun su funcion.
+La restriccion sobre legajos medicos se mantiene alineada con la memoria: `superAdmin`, `medico` y `administrativoSalud` pueden consultar legajos porque forman parte del circuito sanitario. El rol `administrativoSalud` solo consulta antecedentes y certificados historicos para evitar duplicados o inconsistencias de carga; no accede a la validacion medica ni puede aprobar, rechazar o modificar decisiones clinicas. Los perfiles administrativo general, RRHH y gerencia quedan limitados a informacion operativa segun su funcion.
 
 ## 5. Flujo funcional completo
 
@@ -658,14 +659,15 @@ Porque esta version prioriza ejecucion local y demostracion funcional. La arquit
 
 ### Que deberia cambiar para Firebase?
 
-- Reemplazar persistencia local por Firestore/Auth/Storage.
-- Mantener interfaces de almacenamiento similares.
-- Cambiar el handler de `operationQueue`.
-- Reemplazar usuarios mock por Firebase Auth.
-- Guardar certificados adjuntos en Firebase Storage.
-- Persistir auditoria en Firestore/Logging.
+- Ya se agrego modo Firebase con Auth, Firestore y Storage.
+- La cola `operationQueue` sincroniza certificados, borradores, validaciones, historial, planes y auditoria.
+- Los certificados adjuntos se guardan en Firebase Storage y Firestore conserva `rutaStorage`/`downloadUrl`, no base64.
+- Las pantallas se hidratan desde Firestore en modo Firebase y mantienen fallback local.
+- Las reglas `firestore.rules` y `storage.rules` protegen roles, colecciones clinicas y archivos de hasta 5 MB.
+- La auditoria se registra localmente y tambien en `auditoria` cuando Firebase esta activo.
+- Analytics y Performance quedan inicializados para verificar eventos funcionales desde Firebase Console.
 - Implementar MFA y JWT reales mediante Firebase Authentication.
-- Mover reglas sensibles y alertas criticas a Cloud Functions.
+- Mover reglas sensibles y alertas criticas a Cloud Functions como evolucion de backend.
 
 ### El sistema diagnostica?
 
@@ -696,7 +698,7 @@ Cada certificado tiene referencia, empleado, sector, fechas, estado, observacion
 
 ### Como se prueba que funciona?
 
-Con pruebas automatizadas que cubren login, roles, registro, validacion, legajos, dashboard y flujo integrado. Actualmente pasan 47 tests.
+Con pruebas automatizadas que cubren login, roles, registro, validacion, legajos, dashboard y flujo integrado. Tambien se puede verificar en Firebase Console que Auth identifica al usuario, Firestore recibe documentos funcionales, Storage guarda el adjunto y Analytics registra eventos de uso.
 
 ## 18. Guion de demo recomendado
 

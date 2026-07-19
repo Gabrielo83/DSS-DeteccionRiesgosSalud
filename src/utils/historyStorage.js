@@ -101,6 +101,14 @@ export const readAllHistory = () => {
   return records;
 };
 
+export const replaceAllHistory = (records = {}) => {
+  if (!records || typeof records !== "object" || Array.isArray(records)) {
+    persistHistory({});
+    return;
+  }
+  persistHistory(records);
+};
+
 export const appendEmployeeHistory = (employeeKey, record) => {
   if (!employeeKey || !record) return;
   const records = readRawHistory();

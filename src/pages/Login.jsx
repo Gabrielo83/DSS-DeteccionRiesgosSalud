@@ -2,17 +2,29 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 import { MOCK_USERS } from "../data/mockUsers.js";
+import { isFirebaseProvider } from "../services/appMode.js";
+import { appendAuditLog } from "../utils/auditLog.js";
 
-function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
+function Login({
+  isDark,
+  onToggleTheme,
+  onLoginSuccess,
+  isAuthenticated,
+  isAuthReady,
+  userRole,
+  roleMissing,
+}) {
   const navigate = useNavigate();
   const [formValues, setFormValues] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isFirebaseEnabled = isFirebaseProvider();
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && userRole) {
       navigate("/dashboard", { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, userRole]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -21,6 +33,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const email = formValues.email.trim();
     const password = formValues.password.trim();
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,20 +58,53 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
       return;
     }
 
+    if (isFirebaseEnabled) {
+      setIsSubmitting(true);
+      import("../utils/firebaseAuth.js")
+        .then(({ signInWithEmail }) => signInWithEmail(email, password))
+        .then(() => {
+          setError("");
+          appendAuditLog("login_success", {
+            user: email,
+            role: "firebase-pendiente",
+          });
+        })
+        .catch((authError) => {
+          const message =
+            authError?.code === "auth/invalid-credential"
+              ? "Credenciales invalidas."
+              : "No se pudo iniciar sesion. Verifica tus datos.";
+          setError(message);
+          appendAuditLog("login_failure", {
+            user: email,
+            metadata: {
+              code: authError?.code || "firebase-auth-error",
+            },
+          });
+        })
+        .finally(() => {
+          setIsSubmitting(false);
+        });
+      return;
+    }
+
     const matchedUser = MOCK_USERS.find(
       (user) =>
         user.email.toLowerCase() === email.toLowerCase() &&
-        user.password === password
+        user.password === password,
     );
 
     if (!matchedUser) {
-      setError(
-        "Credenciales invalidas. Usa alguno de los usuarios demo listados."
-      );
+      setError("Credenciales invalidas. Verifica tus datos de acceso.");
+      appendAuditLog("login_failure", {
+        user: email,
+        metadata: { mode: "local" },
+      });
       return;
     }
 
     setError("");
+    setIsSubmitting(true);
     if (typeof onLoginSuccess === "function") {
       onLoginSuccess(matchedUser);
     }
@@ -149,7 +195,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
                     name="email"
                     type="email"
                     autoComplete="email"
-                    placeholder="superadmin@empresa.com (usuario demo)"
+                    placeholder="usuario@empresa.com"
                     value={formValues.email}
                     onChange={handleChange}
                     className="w-full rounded-2xl border border-slate-400 bg-white px-11 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:bg-slate-950"
@@ -187,7 +233,7 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
                     type="password"
                     autoComplete="current-password"
                     aria-label="Contrasena"
-                    placeholder="Super123* (clave demo)"
+                    placeholder="Ingresa tu contrasena"
                     value={formValues.password}
                     onChange={handleChange}
                     className="w-full rounded-2xl border border-slate-400 bg-white px-11 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:bg-slate-950"
@@ -197,13 +243,31 @@ function Login({ isDark, onToggleTheme, onLoginSuccess, isAuthenticated }) {
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="w-full rounded-2xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-400/40 transition hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:shadow-slate-900/40 dark:hover:bg-white"
               >
-                Ingresar al Sistema
+                {isSubmitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white dark:border-slate-900/40 dark:border-t-slate-900" />
+                    Ingresando...
+                  </span>
+                ) : (
+                  "Ingresar al Sistema"
+                )}
               </button>
 
               {error ? (
                 <p className="text-xs font-medium text-rose-500">{error}</p>
+              ) : null}
+              {!isAuthReady ? (
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-300">
+                  Conectando...
+                </p>
+              ) : null}
+              {roleMissing ? (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-300">
+                  No se encontro un rol habilitado para este usuario.
+                </p>
               ) : null}
             </form>
 

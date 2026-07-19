@@ -1,0 +1,106 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function role() {
+      return signedIn() && userDoc().data.rol is string
+        ? userDoc().data.rol
+        : "";
+    }
+
+    function hasAnyRole(roles) {
+      return signedIn() && role() in roles;
+    }
+
+    function isClinical() {
+      return hasAnyRole(["superAdmin", "medico", "administrativoSalud"]);
+    }
+
+    function isMedicalReviewer() {
+      return hasAnyRole(["superAdmin", "medico"]);
+    }
+
+    function isOperational() {
+      return hasAnyRole([
+        "superAdmin",
+        "medico",
+        "administrativo",
+        "administrativoSalud",
+        "respRRHH"
+      ]);
+    }
+
+    match /usuarios/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || hasAnyRole(["superAdmin"]));
+      allow create, update, delete: if hasAnyRole(["superAdmin"]);
+    }
+
+    match /empleados/{employeeId} {
+      allow read: if signedIn();
+      allow create, update, delete: if hasAnyRole(["superAdmin", "respRRHH"]);
+    }
+
+    match /ausencias/{absenceId} {
+      allow read: if isOperational();
+      allow create, update: if isOperational();
+      allow delete: if hasAnyRole(["superAdmin"]);
+    }
+
+    match /validaciones_medicas/{reference} {
+      allow read: if isClinical();
+      allow create: if isOperational();
+      allow update: if isMedicalReviewer()
+        || (isOperational() && resource.data.estado in ["pendiente", "en_revision", "Pendiente", "En Revision"]);
+      allow delete: if hasAnyRole(["superAdmin"]);
+    }
+
+    match /historial_medico/{historyId} {
+      allow read: if isClinical();
+      allow create, update: if isMedicalReviewer();
+      allow delete: if hasAnyRole(["superAdmin"]);
+    }
+
+    match /borradores/{draftId} {
+      allow read, create, update, delete: if isOperational();
+    }
+
+    match /planes_preventivos/{employeeId} {
+      allow read: if isClinical();
+      allow create, update: if isMedicalReviewer();
+      allow delete: if hasAnyRole(["superAdmin"]);
+    }
+
+    match /patologias/{pathologyId} {
+      allow read: if signedIn();
+      allow create, update, delete: if hasAnyRole(["superAdmin", "medico"]);
+    }
+
+    match /parametros_riesgo/{configId} {
+      allow read: if signedIn();
+      allow create, update, delete: if hasAnyRole(["superAdmin", "medico"]);
+    }
+
+    match /auditoria/{auditId} {
+      allow read: if hasAnyRole(["superAdmin"]);
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /operations/{operationId} {
+      allow read, create, update: if signedIn();
+      allow delete: if hasAnyRole(["superAdmin"]);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -82,6 +82,24 @@ describe("Funcionalidad de Registro de Ausencias", () => {
     ).toBeInTheDocument();
   });
 
+  it("ofrece acceso al historial completo del colaborador seleccionado", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /Escribe el nombre del empleado/i
+    );
+    await user.type(nameInput, firstEmployee.fullName);
+
+    const historyLink = screen.getByRole("link", {
+      name: /Ver historial completo/i,
+    });
+    expect(historyLink).toHaveAttribute(
+      "href",
+      `/legajos-medicos?employeeId=${firstEmployee.employeeId}`,
+    );
+  });
+
   it("limpia los campos dependientes cuando el nombre no coincide", async () => {
     const user = userEvent.setup();
     renderPage();

@@ -4,12 +4,13 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 
 ## Funcionalidades principales
 
-- Login por roles: superAdmin, medico, administrativo, gerente y respRRHH, con permisos diferenciados por alcance funcional.
+- Login por roles: superAdmin, medico, administrativo, administrativoSalud, gerente y respRRHH, con permisos diferenciados por alcance funcional.
 - Registro de ausencias con busqueda de empleados, calculo automatico de dias, borradores, adjuntos con vista previa y envio para revision.
 - Validacion medica con filtros, modal clinico, asignacion de riesgo, planes preventivos, historial y paginacion.
 - Legajos medicos digitales con busqueda, certificados por periodo, carga masiva de historicos y vista previa de documentos.
 - Dashboard operativo con metricas de ausentismo, alertas activas, mapa de calor por sector, tabla de riesgo individual y planes preventivos.
 - Persistencia en navegador con IndexedDB/localStorage y cola de operaciones para continuidad operativa.
+- Sincronizacion progresiva con Firebase mediante selector de proveedor.
 - Politica de contrasena segura, expiracion de sesion por inactividad y auditoria local de eventos criticos.
 
 ## Stack
@@ -18,6 +19,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - React Router
 - Context API para autenticacion y permisos por rol
 - IndexedDB/localStorage para persistencia del prototipo
+- Firebase Web SDK para Firestore, Authentication y Storage
 - Vitest + Testing Library para pruebas unitarias e integrales
 
 ## Alcance de roles
@@ -25,6 +27,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - superAdmin: acceso completo.
 - medico: validacion, legajos, registro, certificados y dashboard.
 - administrativo: dashboard, registro de ausencias y carga documental.
+- administrativoSalud: dashboard, registro, carga documental y consulta de legajos/certificados historicos sin decision medica.
 - respRRHH: dashboard y registro administrativo de ausencias.
 - gerente: dashboard de indicadores.
 
@@ -45,11 +48,59 @@ npm run dev -- --host
 
 4. Abrir [http://localhost:5173](http://localhost:5173).
 
+## Modos de datos
+
+El proyecto mantiene un unico codigo base con selector de proveedor:
+
+- `local`: usa `localStorage`, IndexedDB y cola local. Es el modo estable para defensa.
+- `firebase`: mantiene la continuidad local, sincroniza operaciones con Firestore, sube adjuntos a Storage e hidrata las pantallas desde Firestore segun permisos.
+
+Para modo local:
+
+```bash
+npm run dev -- --host
+```
+
+Para modo Firebase:
+
+1. Copiar `.env.example` a `.env.firebase`.
+2. Completar las variables `VITE_FIREBASE_*` del proyecto Firebase.
+3. Configurar:
+
+```env
+VITE_DATA_PROVIDER="firebase"
+```
+
+4. Ejecutar:
+
+```bash
+npm run dev:firebase -- --host
+```
+
+Las credenciales reales no deben subirse al repositorio.
+
+### Reglas Firebase
+
+El repositorio incluye `firestore.rules`, `storage.rules` y `firebase.json`.
+
+Para desplegarlas desde Firebase CLI:
+
+```bash
+firebase deploy --only firestore:rules,storage
+```
+
+Las reglas de Storage limitan certificados a PDF/JPG/PNG de hasta 5 MB en
+`certificados/{reference}/{archivo}`. La validacion del frontend mantiene el
+mismo limite para evitar intentos invalidos antes de sincronizar.
+
 ## Scripts utiles
 
 ```bash
-# levantar en desarrollo
+# levantar en desarrollo local
 npm run dev -- --host
+
+# levantar en desarrollo Firebase
+npm run dev:firebase -- --host
 
 # ejecutar pruebas
 npm test
@@ -57,8 +108,11 @@ npm test
 # verificar calidad de codigo
 npm run lint
 
-# generar build de produccion
+# generar build de produccion local
 npm run build
+
+# generar build con modo Firebase
+npm run build:firebase
 ```
 
 ## Flujo de presentacion
@@ -73,7 +127,8 @@ npm run build
 
 - superadmin@empresa.com / Super123*
 - medico@empresa.com / Medico123*
-- administrativo@empresa.com / Administra123*
+- administrativo@empresa.com / Admin123*
+- salud.admin@empresa.com / Salud123*
 - gerente@empresa.com / Gerente123*
 - rrhh@empresa.com / Rrhh123*
 
@@ -90,3 +145,21 @@ npm run build
 ### Legajo Medico
 
 ![Legajo Medico](./src/assets/gifs/legajo-medico.gif)
+
+## Proximos pasos
+
+- Completar semillas remotas de empleados/patologias si se desea operar sin datos locales iniciales.
+- Revisar eventos en Firebase Analytics, Performance y la coleccion `auditoria`.
+- Ajustar reglas productivas finas si se agregan claims custom por rol.
+- Mantener IndexedDB como respaldo offline-first.
+- Mover reglas sensibles y alertas criticas a Cloud Functions como evolucion backend.
+
+Si necesitas regenerar datos controlados para presentacion, ejecuta
+`window.runDemoSeed()` en la consola del navegador.
+
+Para cargar la nomina controlada de 80 empleados en Firestore, inicia sesion en
+modo Firebase con un rol autorizado (`superAdmin` o `respRRHH`) y ejecuta:
+
+```js
+await window.seedFirebaseEmployees()
+```

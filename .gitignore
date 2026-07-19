@@ -12,6 +12,7 @@ dist
 dist-ssr
 temp.txt
 HISTORIAL.md
+docs/firebase_schema.txt
 RELEASE.md
 *.local
 
@@ -27,4 +28,5 @@ RELEASE.md
 *.sln
 *.sw?
 *.env
+.env.firebase
 

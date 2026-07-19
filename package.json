@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:firebase": "vite --mode firebase",
     "build": "vite build",
+    "build:firebase": "vite build --mode firebase",
+    "deploy:firebase:rules": "firebase deploy --only firestore:rules,storage",
     "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^12.15.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.5"

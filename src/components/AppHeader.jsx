@@ -10,6 +10,7 @@ import {
 } from "../utils/storageKeys.js";
 import { readDrafts } from "../utils/draftStorage.js";
 import { readAuditLog } from "../utils/auditLog.js";
+import { getDataProvider, DATA_PROVIDERS } from "../services/appMode.js";
 
 const navLinks = [
   {
@@ -153,6 +154,7 @@ const roleDisplayMap = {
   superAdmin: "Super Admin",
   medico: "Medico Laboral",
   administrativo: "Administrativo",
+  administrativoSalud: "Administrativo Salud Ocupacional",
   gerente: "Gerente",
   respRRHH: "Responsable RRHH",
 };
@@ -331,6 +333,11 @@ function AppHeader({ active, isDark, onToggleTheme }) {
   const roleLabel =
     auth?.user?.roleLabel ??
     (auth?.role ? roleDisplayMap[auth.role] ?? auth.role : "Admin RRHH");
+  const dataProvider = getDataProvider();
+  const isFirebaseMode = dataProvider === DATA_PROVIDERS.firebase;
+  const providerRingClass = isFirebaseMode
+    ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-emerald-300 dark:ring-offset-slate-900"
+    : "ring-2 ring-amber-400 ring-offset-2 ring-offset-white dark:ring-amber-300 dark:ring-offset-slate-900";
 
   const initials = useMemo(() => {
     if (!userName) return "GC";
@@ -704,7 +711,10 @@ function AppHeader({ active, isDark, onToggleTheme }) {
                 {roleLabel}
               </p>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-md shadow-slate-600/40 dark:bg-white dark:text-slate-900 dark:shadow-slate-900/30">
+            <div
+              className={`flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-md shadow-slate-600/40 dark:bg-white dark:text-slate-900 dark:shadow-slate-900/30 ${providerRingClass}`}
+              title={isFirebaseMode ? "Modo Firebase" : "Modo Local"}
+            >
               <span className="text-xs font-semibold">{initials}</span>
             </div>
             <button

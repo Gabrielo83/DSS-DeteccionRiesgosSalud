@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import AppHeader from "../components/AppHeader.jsx";
-import { mockEmployees } from "../data/mockEmployees.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
+import { readEmployees } from "../utils/employeeStorage.js";
 import { readEmployeeHistory } from "../utils/historyStorage.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
 import {
@@ -10,6 +10,7 @@ import {
   parseLocalDate,
 } from "../utils/dateUtils.js";
 import {
+  EMPLOYEES_UPDATED_EVENT,
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
@@ -61,8 +62,6 @@ const buildMedicalFiles = (employees) =>
       status: studyStatuses[(index + templateIndex) % studyStatuses.length],
     })),
   }));
-
-const medicalFiles = buildMedicalFiles(mockEmployees);
 
 const isWithinRange = (dateValue, startDate, endDate) => {
   const parsedDate = getLocalDateTimestamp(dateValue);
@@ -255,10 +254,31 @@ function EyeIcon({ className = "h-4 w-4 text-slate-700" }) {
   );
 }
 
+const resolveInitialMedicalRecord = (medicalFiles) => {
+  if (typeof window === "undefined") return medicalFiles[0];
+  const params = new URLSearchParams(window.location.search);
+  const employeeId = params.get("employeeId");
+  const employeeName = params.get("employeeName");
+  const normalizedName = employeeName?.trim().toLowerCase();
+  return (
+    medicalFiles.find(
+      (record) =>
+        record.profile.id === employeeId ||
+        (normalizedName &&
+          record.profile.name.toLowerCase() === normalizedName),
+    ) || medicalFiles[0]
+  );
+};
+
 export default function MedicalRecords({ isDark, onToggleTheme }) {
-  const [selectedRecord, setSelectedRecord] = useState(medicalFiles[0]);
+  const [employees, setEmployees] = useState(() =>
+    typeof window === "undefined" ? [] : readEmployees(),
+  );
+  const medicalFiles = useMemo(() => buildMedicalFiles(employees), [employees]);
+  const initialRecord = resolveInitialMedicalRecord(medicalFiles);
+  const [selectedRecord, setSelectedRecord] = useState(initialRecord);
   const [employeeQuery, setEmployeeQuery] = useState(
-    medicalFiles[0].profile.name
+    initialRecord?.profile?.name || "",
   );
   const now = new Date();
   const [periodPreset, setPeriodPreset] = useState("year");
@@ -275,15 +295,47 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
   const [storageVersion, setStorageVersion] = useState(0);
 
   const sortedEmployeeList = useMemo(
-    () => sortEmployees(mockEmployees, employeeListSort),
-    [employeeListSort],
+    () => sortEmployees(employees, employeeListSort),
+    [employeeListSort, employees],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const syncEmployees = () => {
+      setEmployees(readEmployees());
+    };
+    syncEmployees();
+    window.addEventListener(EMPLOYEES_UPDATED_EVENT, syncEmployees);
+    window.addEventListener("storage", syncEmployees);
+    return () => {
+      window.removeEventListener(EMPLOYEES_UPDATED_EVENT, syncEmployees);
+      window.removeEventListener("storage", syncEmployees);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!medicalFiles.length) return;
+    setSelectedRecord((current) => {
+      const currentId = current?.profile?.id;
+      const currentName = current?.profile?.name?.toLowerCase();
+      const updated =
+        medicalFiles.find((record) => record.profile.id === currentId) ||
+        medicalFiles.find(
+          (record) =>
+            currentName && record.profile.name.toLowerCase() === currentName,
+        ) ||
+        medicalFiles[0];
+      setEmployeeQuery(updated.profile.name);
+      return updated;
+    });
+  }, [medicalFiles]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshCertificates = () => {
       setStorageVersion((current) => current + 1);
     };
+    window.addEventListener(EMPLOYEES_UPDATED_EVENT, refreshCertificates);
     window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshCertificates);
     window.addEventListener(
       MEDICAL_VALIDATIONS_UPDATED_EVENT,
@@ -291,6 +343,7 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
     );
     window.addEventListener("storage", refreshCertificates);
     return () => {
+      window.removeEventListener(EMPLOYEES_UPDATED_EVENT, refreshCertificates);
       window.removeEventListener(
         MEDICAL_HISTORY_UPDATED_EVENT,
         refreshCertificates,

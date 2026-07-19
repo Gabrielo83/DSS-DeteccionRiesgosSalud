@@ -21,6 +21,13 @@ export const MOCK_USERS = [
     fullName: "Roxana Benitez",
   },
   {
+    email: "salud.admin@empresa.com",
+    password: "Salud123*",
+    role: "administrativoSalud",
+    roleLabel: "Administrativo Salud Ocupacional",
+    fullName: "Valeria Duarte",
+  },
+  {
     email: "gerente@empresa.com",
     password: "Gerente123*",
     role: "gerente",
