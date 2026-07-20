@@ -3,8 +3,6 @@ import { getAuth } from "firebase/auth";
 import {
   initializeFirestore,
   memoryLocalCache,
-  persistentLocalCache,
-  persistentMultipleTabManager,
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -27,21 +25,12 @@ const requiredKeys = [
   "appId",
 ];
 
-const trustedDevicePersistence =
-  String(import.meta.env.VITE_FIREBASE_TRUSTED_DEVICE || "")
-    .trim()
-    .toLowerCase() === "true";
-
 let firestoreDb = null;
 
 const getFirebaseDb = (app) => {
   if (firestoreDb) return firestoreDb;
   firestoreDb = initializeFirestore(app, {
-    localCache: trustedDevicePersistence
-      ? persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        })
-      : memoryLocalCache(),
+    localCache: memoryLocalCache(),
   });
   return firestoreDb;
 };
@@ -74,9 +63,10 @@ export const getFirebaseServices = () => {
 };
 
 export const getFirebaseOfflineConfig = () => ({
-  trustedDevice: trustedDevicePersistence,
-  cache: trustedDevicePersistence ? "persistent-indexeddb" : "memory",
-  tabMode: trustedDevicePersistence ? "multiple" : "none",
+  trustedDevice: false,
+  cache: "memory",
+  tabMode: "none",
+  operationalQueue: "encrypted-indexeddb",
 });
 
 export const getFirebaseAnalytics = async () => {

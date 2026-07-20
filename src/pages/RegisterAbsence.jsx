@@ -15,6 +15,7 @@ import {
   restoreDraftAttachment,
 } from "../utils/draftStorage.js";
 import {
+  ABSENCES_UPDATED_EVENT,
   ABSENCE_DRAFTS_UPDATED_EVENT,
   EMPLOYEES_UPDATED_EVENT,
   MEDICAL_HISTORY_UPDATED_EVENT,
@@ -26,6 +27,7 @@ import {
 } from "../utils/operationQueue.js";
 import { readEmployeeHistory } from "../utils/historyStorage.js";
 import { appendAuditLog } from "../utils/auditLog.js";
+import { readAbsences, upsertAbsence } from "../utils/absenceStorage.js";
 import AuthContext from "../context/AuthContext.jsx";
 
 const sectionIcons = {
@@ -166,6 +168,12 @@ const resolveAbsenceTypeLabel = (value) =>
 
 const generateDraftId = () =>
   `DRAFT-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
+
+const generateAbsenceId = () => {
+  const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 12);
+  const random = Math.floor(Math.random() * 900 + 100);
+  return `AUS-${timestamp}-${random}`;
+};
 
 const resolveSortTimestamp = (entry, fallbackIndex = 0) => {
   if (!entry) return fallbackIndex;
@@ -328,6 +336,7 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
   const [activeDraftId, setActiveDraftId] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [validationQueue, setValidationQueue] = useState([]);
+  const [absenceRecords, setAbsenceRecords] = useState([]);
   const [activeRevisionEntry, setActiveRevisionEntry] = useState(null);
   const [overlapWarnings, setOverlapWarnings] = useState([]);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
@@ -341,6 +350,18 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
       if (currentReference && item.reference === currentReference) return;
       if (item.startDate && item.endDate) {
         ranges.push({ start: item.startDate, end: item.endDate, source: "validations" });
+      }
+    });
+    (absenceRecords || []).forEach((item) => {
+      if (item.employeeId !== formValues.employeeId) return;
+      if (item.requiresCertificate) return;
+      if (currentReference && item.absenceId === currentReference) return;
+      if (item.startDate && item.endDate) {
+        ranges.push({
+          start: item.startDate,
+          end: item.endDate,
+          source: "absences",
+        });
       }
     });
     (drafts || []).forEach((draft) => {
@@ -370,6 +391,7 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
   }, [
     formValues.employeeId,
     validationQueue,
+    absenceRecords,
     drafts,
     activeRevisionEntry?.reference,
     activeDraftId,
@@ -470,6 +492,16 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    const syncAbsences = () => setAbsenceRecords(readAbsences());
+    syncAbsences();
+    window.addEventListener(ABSENCES_UPDATED_EVENT, syncAbsences);
+    return () => {
+      window.removeEventListener(ABSENCES_UPDATED_EVENT, syncAbsences);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
     const syncQueue = () => {
       setValidationQueue(readValidationQueue());
     };
@@ -500,6 +532,24 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
         const e = formatDateEs(item.endDate);
         conflicts.push(
           `Solicitud existente (${item.reference || "sin ref"}) del ${s} al ${e}.`,
+        );
+      }
+    });
+
+    (absenceRecords || []).forEach((item) => {
+      if (item.employeeId !== employeeKey) return;
+      if (item.requiresCertificate) return;
+      if (currentReference && item.absenceId === currentReference) return;
+      if (
+        rangesOverlap(
+          formValues.startDate,
+          formValues.endDate,
+          item.startDate,
+          item.endDate,
+        )
+      ) {
+        conflicts.push(
+          `Ausencia existente (${item.absenceId || "sin ref"}) del ${formatDateEs(item.startDate)} al ${formatDateEs(item.endDate)}.`,
         );
       }
     });
@@ -543,6 +593,7 @@ function RegisterAbsence({ isDark, onToggleTheme }) {
     formValues.startDate,
     formValues.endDate,
     validationQueue,
+    absenceRecords,
     drafts,
     activeRevisionEntry?.reference,
     activeDraftId,
@@ -892,10 +943,10 @@ const clearCertificateFile = () => {
     if (!formValues.absenceType) {
       errors.absenceType = "Selecciona un tipo de ausencia.";
     }
-    if (!formValues.pathologyCategory) {
+    if (requiresMedicalCertificate && !formValues.pathologyCategory) {
       errors.pathologyCategory = "Selecciona un grupo de patologia.";
     }
-    if (!formValues.detailedReason.trim()) {
+    if (requiresMedicalCertificate && !formValues.detailedReason.trim()) {
       errors.detailedReason = "Describe el diagnostico detallado.";
     }
     if (requiresMedicalCertificate && mode !== "draft") {
@@ -999,6 +1050,31 @@ const clearCertificateFile = () => {
     };
   };
 
+  const persistAdministrativeAbsence = ({
+    absenceId,
+    submittedAt,
+    requiresCertificate,
+  }) => {
+    const entry = {
+      absenceId,
+      employeeId: formValues.employeeId,
+      employeeName: formValues.employeeName,
+      sector: formValues.sector,
+      position: formValues.position,
+      absenceType: formValues.absenceType,
+      startDate: formValues.startDate,
+      endDate: formValues.endDate,
+      absenceDays,
+      requiresApproval: formValues.requiresApproval,
+      requiresCertificate,
+      status: "registrada",
+      submittedAt,
+    };
+    upsertAbsence(entry);
+    setAbsenceRecords(readAbsences());
+    return entry;
+  };
+
   const handleSubmit = (action) => {
     setSubmissionFeedback("");
     const validationMode = action === "draft" ? "draft" : "approve";
@@ -1054,7 +1130,10 @@ const clearCertificateFile = () => {
           absenceType: draftPayload.formValues.absenceType,
           payload: draftPayload,
         },
-        { user: auth?.user?.email || currentUserName },
+        {
+          user: auth?.user?.email || currentUserName,
+          entityId: draftPayload.draftId,
+        },
       );
       processOperationQueue(undefined, { ownerIds: queueOwnerIds });
       setToastState({
@@ -1071,6 +1150,11 @@ const clearCertificateFile = () => {
     const draftIdToClear = activeDraftId;
     const result = persistValidationEntry();
     if (result?.reference) {
+      persistAdministrativeAbsence({
+        absenceId: result.reference,
+        submittedAt: result.submissionTimestamp,
+        requiresCertificate: true,
+      });
       enqueueOperation(
         "submitCertificate",
         {
@@ -1101,6 +1185,33 @@ const clearCertificateFile = () => {
           entityId: draftIdToClear,
         },
       );
+      processOperationQueue(undefined, { ownerIds: queueOwnerIds });
+    } else {
+      const absenceId = generateAbsenceId();
+      const submittedAt = new Date().toISOString();
+      const absence = persistAdministrativeAbsence({
+        absenceId,
+        submittedAt,
+        requiresCertificate: false,
+      });
+      enqueueOperation(
+        "submitAbsence",
+        { absenceId, absence },
+        {
+          user: auth?.user?.email || currentUserName,
+          entityId: absenceId,
+        },
+      );
+      appendAuditLog("absence_submitted", {
+        user: auth?.user?.email || currentUserName,
+        role: auth?.role,
+        entityId: absenceId,
+        metadata: {
+          employeeId: formValues.employeeId,
+          absenceType: formValues.absenceType,
+          requiresCertificate: false,
+        },
+      });
       processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     }
     resetForm();

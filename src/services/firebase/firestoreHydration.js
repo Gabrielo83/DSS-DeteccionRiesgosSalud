@@ -1,5 +1,6 @@
 import {
   listBorradores,
+  listAusencias,
   listEmpleados,
   listHistorial,
   listPatologias,
@@ -30,6 +31,7 @@ import {
 import { rebuildFirebaseAlertSummary } from "./alertService.js";
 import { rebuildFirebaseRiskIndicator } from "./alertService.js";
 import { replaceRiskIndicator } from "../../utils/riskIndicatorStorage.js";
+import { readAbsences, replaceAbsences } from "../../utils/absenceStorage.js";
 import { recordDashboardSyncSuccess } from "../../utils/syncStatus.js";
 
 const toDateString = (value) => {
@@ -187,6 +189,23 @@ const normalizeEmployee = (doc = {}) => ({
   terminationDate: toDateString(doc.fechaBaja || doc.terminationDate),
 });
 
+const normalizeAbsence = (doc = {}) => ({
+  absenceId: doc.absenceId || doc.id || "",
+  employeeId: doc.employeeId || "",
+  employeeName: doc.nombreCompleto || "",
+  sector: doc.sector || "",
+  position: doc.puesto || "",
+  absenceType: doc.tipo || "",
+  startDate: toDateString(doc.fechaInicio),
+  endDate: toDateString(doc.fechaFin),
+  absenceDays: doc.dias ?? null,
+  requiresApproval: doc.requiereAprobacion || "",
+  requiresCertificate:
+    doc.requiereCertificado ?? Boolean(doc.referenciaCertificado),
+  status: doc.estado || "registrada",
+  submittedAt: toIsoString(doc.creadoEn || doc.updatedAt),
+});
+
 const normalizeRiskAlert = (doc = {}) => ({
   id: doc.alertaId || doc.id || "",
   employeeId: doc.employeeId || "",
@@ -275,6 +294,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     empleadosResult,
     patologiasResult,
     parametrosRiesgoResult,
+    ausenciasResult,
     validacionesResult,
     historialResult,
     borradoresResult,
@@ -292,6 +312,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
         "firebase_hydration_failed",
         detail,
       ),
+      fetchOrFallback(listAusencias, [], "firebase_hydration_failed", detail),
       canReadClinical
         ? fetchOrFallback(
             listValidaciones,
@@ -337,6 +358,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const empleados = empleadosResult.value;
   const patologias = patologiasResult.value;
   const parametrosRiesgo = parametrosRiesgoResult.value;
+  const ausencias = ausenciasResult.value;
   const validaciones = validacionesResult.value;
   const historial = historialResult.value;
   const borradores = borradoresResult.value;
@@ -391,6 +413,9 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       parameters: parametrosRiesgo || {},
       pathologies: patologias,
     });
+  }
+  if (ausenciasResult.ok) {
+    replaceAbsences(mergeAbsencesWithPendingLocal(ausencias.map(normalizeAbsence)));
   }
 
   if (canReadClinical) {
@@ -451,6 +476,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     ["empleados", empleadosResult],
     ["patologias", patologiasResult],
     ["parametros_riesgo", parametrosRiesgoResult],
+    ["ausencias", ausenciasResult],
     ["validaciones_medicas", validacionesResult],
     ["historial_medico", historialResult],
     ["borradores", borradoresResult],
@@ -473,6 +499,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       empleados: empleados.length,
       patologias: patologias.length,
       parametrosRiesgo: parametrosRiesgo ? 1 : 0,
+      ausencias: ausencias.length,
       validaciones: validaciones.length,
       historial: historial.length,
       borradores: borradores.length,
@@ -494,6 +521,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     empleados: empleados.length,
     patologias: patologias.length,
     parametrosRiesgo: parametrosRiesgo ? 1 : 0,
+    ausencias: ausencias.length,
     validaciones: validaciones.length,
     historial: historial.length,
     borradores: borradores.length,
@@ -532,6 +560,25 @@ const mergeValidationsWithPendingLocal = (remoteEntries) => {
   readValidationQueue().forEach((entry) => {
     const reference = entry.reference || entry.id;
     if (pendingReferences.has(reference)) merged.set(reference, entry);
+  });
+  return [...merged.values()];
+};
+
+const mergeAbsencesWithPendingLocal = (remoteEntries) => {
+  const pendingIds = new Set(
+    getPendingOperations()
+      .filter((operation) =>
+        ["submitAbsence", "submitCertificate"].includes(operation.type),
+      )
+      .map((operation) => operation.entityId)
+      .filter(Boolean),
+  );
+  const merged = new Map(
+    remoteEntries.map((entry) => [entry.absenceId || entry.id, entry]),
+  );
+  readAbsences().forEach((entry) => {
+    const absenceId = entry.absenceId || entry.id;
+    if (pendingIds.has(absenceId)) merged.set(absenceId, entry);
   });
   return [...merged.values()];
 };
@@ -581,6 +628,30 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
   const canReadClinical = clinicalRoles.includes(role);
   const { db } = getFirebaseServices();
   const unsubscribers = [];
+
+  unsubscribers.push(
+    onSnapshot(
+      collection(db, "ausencias"),
+      (snapshot) => {
+        if (shouldPreserveLocalSnapshot(snapshot)) return;
+        replaceAbsences(
+          mergeAbsencesWithPendingLocal(
+            mapSnapshotDocs(snapshot).map(normalizeAbsence),
+          ),
+        );
+      },
+      (error) => {
+        appendAuditLog("firebase_realtime_sync_failed", {
+          user: user?.email,
+          role,
+          metadata: {
+            collection: "ausencias",
+            error: error?.message || "No se pudo escuchar Firestore.",
+          },
+        });
+      },
+    ),
+  );
 
   if (canReadClinical) {
     unsubscribers.push(

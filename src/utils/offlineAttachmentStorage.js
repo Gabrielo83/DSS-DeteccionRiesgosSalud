@@ -1,4 +1,8 @@
-import { deleteEntity, readEntity, saveEntity } from "./indexedDbClient.js";
+import {
+  deleteEncryptedEntity,
+  readEncryptedEntity,
+  saveEncryptedEntity,
+} from "./secureStorage.js";
 
 const ATTACHMENT_STORE = "attachments";
 
@@ -24,18 +28,25 @@ export const saveOfflineAttachment = async (
   const attachmentBlob = blob || (await dataUrlToBlob(dataUrl));
   if (!attachmentBlob) return null;
   const record = {
-    blob: attachmentBlob,
+    dataUrl: await blobToDataUrl(attachmentBlob),
     name,
     type: type || attachmentBlob.type || "",
     size: size || attachmentBlob.size || 0,
     savedAt: new Date().toISOString(),
   };
-  await saveEntity(ATTACHMENT_STORE, key, record);
-  return record;
+  await saveEncryptedEntity(`${ATTACHMENT_STORE}:${key}`, record);
+  return { ...record, dataUrl: undefined };
 };
 
-export const readOfflineAttachment = (key) =>
-  key ? readEntity(ATTACHMENT_STORE, key) : Promise.resolve(null);
+export const readOfflineAttachment = async (key) => {
+  if (!key) return null;
+  const record = await readEncryptedEntity(`${ATTACHMENT_STORE}:${key}`);
+  if (!record?.dataUrl) return null;
+  return {
+    ...record,
+    blob: await dataUrlToBlob(record.dataUrl),
+  };
+};
 
 export const readOfflineAttachmentAsDataUrl = async (key) => {
   const record = await readOfflineAttachment(key);
@@ -47,4 +58,6 @@ export const readOfflineAttachmentAsDataUrl = async (key) => {
 };
 
 export const deleteOfflineAttachment = (key) =>
-  key ? deleteEntity(ATTACHMENT_STORE, key) : Promise.resolve();
+  key
+    ? deleteEncryptedEntity(`${ATTACHMENT_STORE}:${key}`)
+    : Promise.resolve();

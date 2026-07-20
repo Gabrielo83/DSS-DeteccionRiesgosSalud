@@ -168,4 +168,33 @@ describe("Funcionalidad de Registro de Ausencias", () => {
       )
     ).toBeInTheDocument();
   });
+
+  it("registra una ausencia general sin crear una validacion medica", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(
+      screen.getByPlaceholderText(/Escribe el nombre del empleado/i),
+      firstEmployee.fullName,
+    );
+    await user.selectOptions(
+      screen.getByTestId("dropdown-absenceType"),
+      "vacaciones",
+    );
+    await user.type(screen.getByTestId("start-date-input"), "2026-08-03");
+    await user.type(screen.getByTestId("end-date-input"), "2026-08-07");
+    await user.click(
+      screen.getByRole("button", { name: /Enviar para Aprobacion/i }),
+    );
+
+    const absences = JSON.parse(localStorage.getItem("app_absences") || "[]");
+    expect(absences).toHaveLength(1);
+    expect(absences[0]).toMatchObject({
+      employeeId: firstEmployee.employeeId,
+      absenceType: "vacaciones",
+      absenceDays: 5,
+      requiresCertificate: false,
+    });
+    expect(localStorage.getItem("app_medical_validations")).toBeNull();
+  });
 });

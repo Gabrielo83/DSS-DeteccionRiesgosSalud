@@ -3,6 +3,8 @@ export const MEDICAL_VALIDATIONS_UPDATED_EVENT =
   "medical-validations-updated";
 export const ABSENCE_DRAFTS_STORAGE_KEY = "app_absence_drafts";
 export const ABSENCE_DRAFTS_UPDATED_EVENT = "absence-drafts-updated";
+export const ABSENCES_STORAGE_KEY = "app_absences";
+export const ABSENCES_UPDATED_EVENT = "absences-updated";
 export const MEDICAL_HISTORY_STORAGE_KEY = "app_medical_history";
 export const MEDICAL_HISTORY_UPDATED_EVENT = "medical-history-updated";
 export const EMPLOYEES_STORAGE_KEY = "app_employees";

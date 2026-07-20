@@ -10,6 +10,11 @@ import {
   readOfflineAttachment,
   saveOfflineAttachment,
 } from "./offlineAttachmentStorage.js";
+import {
+  deleteEncryptedEntity,
+  readEncryptedEntity,
+  saveEncryptedEntity,
+} from "./secureStorage.js";
 
 const IDB_STORE = "queue";
 const IDB_KEY = "queue";
@@ -17,11 +22,12 @@ const IDB_KEY = "queue";
 const isBrowser = () => typeof window !== "undefined";
 const nowIso = () => new Date().toISOString();
 const hasNavigator = () => typeof navigator !== "undefined";
-const QUEUE_SCHEMA_VERSION = 2;
+const QUEUE_SCHEMA_VERSION = 3;
 const BASE_RETRY_DELAY_MS = 5000;
 const MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const MAX_RETRY_COUNT = 8;
 const pendingAttachmentWrites = new Map();
+const pendingPayloadWrites = new Map();
 const RECOVERABLE_ASSET_ERRORS = [
   "failed to fetch dynamically imported module",
   "importing a module script failed",
@@ -102,6 +108,57 @@ const detachOperationFile = (operation) => {
     }),
     attachmentKey,
   };
+};
+
+const detachOperationPayload = (operation) => {
+  if (!operation?.payload || operation.payloadRef) return operation;
+  const payloadRef = `operation:${operation.id}`;
+  const writePromise = saveEncryptedEntity(payloadRef, operation.payload).catch(
+    (error) => {
+      console.warn("No se pudo cifrar la operacion offline:", error);
+      throw error;
+    },
+  );
+  pendingPayloadWrites.set(payloadRef, writePromise);
+  writePromise.finally(() => {
+    if (pendingPayloadWrites.get(payloadRef) === writePromise) {
+      pendingPayloadWrites.delete(payloadRef);
+    }
+  });
+  const { payload: _payload, ...metadata } = operation;
+  return { ...metadata, payloadRef };
+};
+
+const hydrateOperationPayload = async (operation) => {
+  if (operation?.payload) return operation;
+  if (!operation?.payloadRef) return { ...operation, payload: {} };
+  if (pendingPayloadWrites.has(operation.payloadRef)) {
+    await pendingPayloadWrites.get(operation.payloadRef);
+  }
+  const payload = await readEncryptedEntity(operation.payloadRef);
+  if (payload == null) {
+    const error = new Error("No se encontro el contenido cifrado de la operacion.");
+    error.code = "offline-payload-missing";
+    error.retryable = false;
+    throw error;
+  }
+  return { ...operation, payload };
+};
+
+const protectLegacyPayloads = async (queue) => {
+  const protectedQueue = await Promise.all(
+    queue.map(async (operation) => {
+      if (!operation?.payload || operation.payloadRef) return operation;
+      const payloadRef = `operation:${operation.id}`;
+      await saveEncryptedEntity(payloadRef, operation.payload);
+      const { payload: _payload, ...metadata } = operation;
+      return { ...metadata, payloadRef };
+    }),
+  );
+  if (JSON.stringify(protectedQueue) !== JSON.stringify(queue)) {
+    persistQueue(protectedQueue);
+  }
+  return protectedQueue;
 };
 
 const hydrateOperationFile = async (operation) => {
@@ -219,7 +276,9 @@ const buildOperation = (type, payload, meta = {}) => ({
 export const enqueueOperation = (type, payload = {}, meta = {}) => {
   if (!type) return null;
   const queue = readRawQueue();
-  const op = detachOperationFile(buildOperation(type, payload, meta));
+  const op = detachOperationPayload(
+    detachOperationFile(buildOperation(type, payload, meta)),
+  );
   const filtered = queue.filter((item) => item.id !== op.id);
   persistQueue([...filtered, op]);
   appendAuditLog("sync_operation_enqueued", {
@@ -279,7 +338,7 @@ export const processQueue = async (
   handler = defaultHandler,
   { ownerIds = [] } = {},
 ) => {
-  const queue = readRawQueue();
+  const queue = await protectLegacyPayloads(readRawQueue());
   if (!queue.length) return { processed: 0, pending: 0 };
 
   const nextQueue = [];
@@ -312,7 +371,8 @@ export const processQueue = async (
     }
 
     const attemptAt = nowIso();
-    const result = await hydrateOperationFile(op)
+    const result = await hydrateOperationPayload(op)
+      .then((hydratedOperation) => hydrateOperationFile(hydratedOperation))
       .then((hydratedOperation) => handler(hydratedOperation))
       .catch((error) => ({
         ok: false,
@@ -324,6 +384,7 @@ export const processQueue = async (
     if (result?.ok) {
       processed += 1;
       if (op.attachmentKey) await deleteOfflineAttachment(op.attachmentKey);
+      if (op.payloadRef) await deleteEncryptedEntity(op.payloadRef);
       appendAuditLog("sync_operation_success", {
         user: op.user,
         entityId: op.entityId,
@@ -383,7 +444,15 @@ export const processQueue = async (
   };
 };
 
-export const clearOperationQueue = () => persistQueue([]);
+export const clearOperationQueue = () => {
+  readRawQueue().forEach((operation) => {
+    if (operation.payloadRef) deleteEncryptedEntity(operation.payloadRef);
+    if (operation.attachmentKey) {
+      deleteOfflineAttachment(operation.attachmentKey);
+    }
+  });
+  persistQueue([]);
+};
 
 export const startQueueSync = (handler, { ownerIds = [] } = {}) => {
   if (!isBrowser()) return () => {};

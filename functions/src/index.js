@@ -162,6 +162,68 @@ export const actualizarCorreoUsuario = onCall(
   },
 );
 
+const CLINICAL_ABSENCE_FIELDS = [
+  "diagnostico",
+  "grupoPatologia",
+  "cie10",
+  "observacionesAdicionales",
+  "institucionMedica",
+  "certificadoDigital",
+];
+
+export const sanitizarAusenciasAdministrativas = onCall(
+  { region: "us-east1" },
+  async (request) => {
+    await requireSuperAdmin(request);
+    const snapshot = await db.collection("ausencias").get();
+    const affected = snapshot.docs.filter((document) => {
+      const data = document.data();
+      return CLINICAL_ABSENCE_FIELDS.some((field) => field in data);
+    });
+
+    for (let index = 0; index < affected.length; index += 400) {
+      const batch = db.batch();
+      affected.slice(index, index + 400).forEach((document) => {
+        batch.update(document.ref, {
+          ...Object.fromEntries(
+            CLINICAL_ABSENCE_FIELDS.map((field) => [
+              field,
+              FieldValue.delete(),
+            ]),
+          ),
+          sanitizadoEn: FieldValue.serverTimestamp(),
+          sanitizadoPor: "cloud-functions",
+        });
+      });
+      await batch.commit();
+    }
+
+    await db.collection("auditoria").add({
+      eventType: "ausencias_administrativas_sanitizadas_backend",
+      entityId: "ausencias",
+      user: request.auth?.token?.email || request.auth.uid,
+      role: "superAdmin",
+      metadata: {
+        documentosRevisados: snapshot.size,
+        documentosSanitizados: affected.length,
+        camposEliminados: CLINICAL_ABSENCE_FIELDS,
+      },
+      creadoEn: FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
+    });
+
+    logger.info("Ausencias administrativas sanitizadas.", {
+      reviewed: snapshot.size,
+      sanitized: affected.length,
+    });
+
+    return {
+      documentosRevisados: snapshot.size,
+      documentosSanitizados: affected.length,
+    };
+  },
+);
+
 const toDate = (value) => {
   if (!value) return null;
   if (typeof value.toDate === "function") return value.toDate();

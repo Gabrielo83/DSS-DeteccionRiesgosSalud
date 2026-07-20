@@ -5,6 +5,7 @@ import { pathologyCategories } from "../data/pathologyCategories.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
 import { readAllHistory } from "../utils/historyStorage.js";
 import { readEmployees } from "../utils/employeeStorage.js";
+import { readAbsences } from "../utils/absenceStorage.js";
 import calculateRiskScore, { mapScoreToRisk } from "../utils/riskUtils.js";
 import { readRiskConfig } from "../utils/riskConfigStorage.js";
 import {
@@ -13,6 +14,7 @@ import {
   parseLocalDate,
 } from "../utils/dateUtils.js";
 import {
+  ABSENCES_UPDATED_EVENT,
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
   EMPLOYEES_UPDATED_EVENT,
@@ -353,6 +355,9 @@ function Dashboard({ isDark, onToggleTheme }) {
   const [validationQueue, setValidationQueue] = useState(() =>
     typeof window === "undefined" ? [] : readValidationQueue(),
   );
+  const [absenceRecords, setAbsenceRecords] = useState(() =>
+    typeof window === "undefined" ? [] : readAbsences(),
+  );
   const [historySnapshot, setHistorySnapshot] = useState(() =>
     typeof window === "undefined" ? {} : readAllHistory(),
   );
@@ -488,6 +493,13 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
   }, [allHistoryEntries, periodRange]);
 
+  const filteredAbsences = useMemo(() => {
+    const { startMs, endMs } = periodRange;
+    return absenceRecords.filter((entry) =>
+      isWithinPeriod(entry.startDate || entry.submittedAt, startMs, endMs),
+    );
+  }, [absenceRecords, periodRange]);
+
   const useAggregatedRisk = firebaseMode && !canReadAlertDetail;
   const selectedPeriodKey = `${periodYear}-${String(periodMonth + 1).padStart(2, "0")}`;
   const selectedRiskPeriod = useMemo(
@@ -526,6 +538,17 @@ function Dashboard({ isDark, onToggleTheme }) {
     });
     return map;
   }, [employeeIndexById, filteredValidated]);
+
+  const absencesBySector = useMemo(() => {
+    const map = new Map();
+    filteredAbsences.forEach((entry) => {
+      const base = entry.employeeId ? employeeIndexById.get(entry.employeeId) : null;
+      const sector = entry.sector || base?.sector || "Sin sector";
+      if (!map.has(sector)) map.set(sector, []);
+      map.get(sector).push(entry);
+    });
+    return map;
+  }, [employeeIndexById, filteredAbsences]);
 
   const alertsCount =
     firebaseMode && riskAlertSummary
@@ -816,6 +839,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     const sectors = new Set([
       ...headcountBySector.keys(),
       ...validatedBySector.keys(),
+      ...absencesBySector.keys(),
       ...alertsBySector.keys(),
       ...aggregateSectorMetrics.keys(),
     ]);
@@ -823,10 +847,12 @@ function Dashboard({ isDark, onToggleTheme }) {
     const items = Array.from(sectors).map((sector) => {
       const headcount = headcountBySector.get(sector) || 0;
       const validated = validatedBySector.get(sector) || [];
+      const sectorAbsences = absencesBySector.get(sector) || [];
       const aggregate = aggregateSectorMetrics.get(sector) || null;
       const validatedCount = useAggregatedRisk
         ? aggregate?.certificateCount || 0
         : validated.length;
+      const absenceCount = sectorAbsences.length;
       const alerts = alertsBySector.get(sector) || 0;
       const avgRisk =
         useAggregatedRisk
@@ -853,9 +879,7 @@ function Dashboard({ isDark, onToggleTheme }) {
               return sum + (computed?.score ?? 0);
             }, 0) / validated.length
           : null;
-      const daysLost = useAggregatedRisk
-        ? aggregate?.daysLost || 0
-        : validated.reduce((sum, entry) => {
+      const daysLost = sectorAbsences.reduce((sum, entry) => {
             if (entry.absenceDays) return sum + entry.absenceDays;
             if (entry.days) return sum + entry.days;
             return sum + diffDaysInclusive(entry.startDate, entry.endDate);
@@ -900,14 +924,15 @@ function Dashboard({ isDark, onToggleTheme }) {
       };
 
       const toneData = classifyTone();
-      const summaryLabel = `${validatedCount} ausencia${
-        validatedCount === 1 ? "" : "s"
+      const summaryLabel = `${absenceCount} ausencia${
+        absenceCount === 1 ? "" : "s"
       } - ${alerts} alerta${alerts === 1 ? "" : "s"}`;
 
       return {
         sector,
         headcount,
         validatedCount,
+        absenceCount,
         alerts,
         avgRisk,
         rate,
@@ -934,6 +959,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     );
   }, [
     alertsBySector,
+    absencesBySector,
     headcountBySector,
     openHeatmapModal,
     periodWorkingDays,
@@ -947,9 +973,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       new Date(periodYear, periodMonth, 1),
       new Date(periodYear, periodMonth + 1, 0),
     );
-    const totalDaysLost = useAggregatedRisk
-      ? selectedRiskPeriod?.daysLost || 0
-      : filteredValidated.reduce((sum, entry) => {
+    const totalDaysLost = filteredAbsences.reduce((sum, entry) => {
           if (entry.absenceDays) return sum + entry.absenceDays;
           if (entry.days) return sum + entry.days;
           return sum + diffDaysInclusive(entry.startDate, entry.endDate);
@@ -994,6 +1018,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     ];
   }, [
     filteredValidated,
+    filteredAbsences,
     headcountActive,
     riskAverage,
     alertsCount,
@@ -1086,6 +1111,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     const refreshAll = () => {
       setEmployees(readEmployees());
       setValidationQueue(readValidationQueue());
+      setAbsenceRecords(readAbsences());
       setHistorySnapshot(readAllHistory());
       setRiskAlerts(readRiskAlerts());
       setRiskAlertSummary(readRiskAlertSummary());
@@ -1096,6 +1122,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     window.addEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
     window.addEventListener(RISK_CONFIG_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, refreshAll);
+    window.addEventListener(ABSENCES_UPDATED_EVENT, refreshAll);
     window.addEventListener(MEDICAL_HISTORY_UPDATED_EVENT, refreshAll);
     window.addEventListener(RISK_ALERTS_UPDATED_EVENT, refreshAll);
     window.addEventListener(RISK_INDICATOR_UPDATED_EVENT, refreshAll);
@@ -1107,6 +1134,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         MEDICAL_VALIDATIONS_UPDATED_EVENT,
         refreshAll,
       );
+      window.removeEventListener(ABSENCES_UPDATED_EVENT, refreshAll);
       window.removeEventListener(
         MEDICAL_HISTORY_UPDATED_EVENT,
         refreshAll,

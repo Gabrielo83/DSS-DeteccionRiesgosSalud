@@ -211,9 +211,11 @@ Implementado:
 
 Implementado:
 
-- Persistencia web de Firestore configurable y deshabilitada por defecto; se activa solo en dispositivos confiables con `VITE_FIREBASE_TRUSTED_DEVICE=true`.
-- IndexedDB conserva datos operativos, cola y adjuntos temporales como `Blob`.
-- La cola no guarda archivos base64 y procesa operaciones en orden cronologico.
+- Firestore utiliza cache en memoria y no persiste documentos clinicos de forma legible entre sesiones.
+- IndexedDB conserva temporalmente los contenidos pendientes cifrados con AES-GCM y una clave no extraible de Web Crypto.
+- `localStorage` conserva solo metadatos de la cola: ID, tipo, estado, propietario, reintentos y referencias al contenido cifrado.
+- La cola no guarda payloads clinicos ni archivos base64 legibles y procesa operaciones en orden cronologico.
+- Los adjuntos pendientes tambien se cifran; se eliminan junto con el payload al completar la sincronizacion.
 - El sincronizador reacciona al evento `online` y usa backoff exponencial de 5 segundos a 5 minutos, con ocho intentos automaticos.
 - Las operaciones tienen ID idempotente, propietario de sesion, version de esquema y estado de conflicto.
 - Solo el UID o correo propietario puede procesar una operacion pendiente.
@@ -223,7 +225,7 @@ Implementado:
   - borradores: ultima escritura
   - decisiones clinicas finales: no se sobrescriben desde una operacion local antigua
 - Una hidratacion fallida preserva la ultima cache valida, sin reemplazarla por datos vacios.
-- Al cerrar sesion Firebase se limpian historiales, validaciones, planes, borradores y nomina hidratada; se preservan operaciones pendientes para no perder trabajo.
+- Al cerrar sesion Firebase se limpian historiales, validaciones, planes, borradores, ausencias y alertas detalladas hidratadas; la cola pendiente permanece cifrada y aislada por propietario.
 - El build de produccion puede cachear el shell con `VITE_ENABLE_OFFLINE_SHELL=true`.
 - Cloud Functions se ejecuta despues de recuperar conectividad y sincronizar Firestore; no se simula su ejecucion offline.
 
@@ -233,6 +235,8 @@ Pruebas automatizadas:
 - conservacion de operaciones sin conectividad
 - backoff exponencial limitado
 - conflictos no reintentables
+- ausencia general sin creacion de validacion medica
+- ausencia de payload clinico legible en `localStorage`
 
 Detalle y guion de prueba: `docs/OFFLINE_FIRST_DEFENSA.md`.
 
@@ -255,6 +259,8 @@ Detalle y guion de prueba: `docs/OFFLINE_FIRST_DEFENSA.md`.
 8. Si se envia a revision:
    - el administrativo ve la notificacion
    - puede corregir o completar informacion
+
+La coleccion `ausencias` funciona como proyeccion administrativa: conserva empleado, sector, tipo, periodo, dias y estado, pero no diagnostico, CIE-10, institucion, notas ni adjunto. Estos campos permanecen exclusivamente en las colecciones clinicas protegidas.
 
 ## Notificaciones
 

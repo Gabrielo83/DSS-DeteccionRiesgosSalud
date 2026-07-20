@@ -5,6 +5,7 @@ import './index.css'
 import './demo/demoSeed.js'
 import './demo/firebaseEmployeeSeed.js'
 import './demo/firebaseRiskSeed.js'
+import './services/firebase/adminUserService.js'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(

@@ -139,7 +139,6 @@ export const mapHistoryRecordToFirestore = (record) => ({
 export const mapAbsenceFormToFirestore = ({
   formValues,
   absenceDays,
-  certificateInstitution,
   certificateFileMeta,
   certificateReference,
   requiresApproval,
@@ -153,24 +152,12 @@ export const mapAbsenceFormToFirestore = ({
   sector: formValues?.sector || "",
   puesto: formValues?.position || "",
   tipo: formValues?.absenceType || "",
-  diagnostico: cleanText(formValues?.detailedReason),
   requiereAprobacion: requiresApproval || formValues?.requiresApproval || "",
-  grupoPatologia: formValues?.pathologyCategory || "",
-  cie10: cleanText(formValues?.cieCode),
-  observacionesAdicionales: formValues?.additionalNotes || "",
   fechaInicio: formValues?.startDate || "",
   fechaFin: formValues?.endDate || "",
   dias: absenceDays ?? null,
-  institucionMedica: cleanText(certificateInstitution),
-  certificadoDigital: certificateFileMeta
-    ? {
-        nombre: certificateFileMeta.name,
-        tamano: certificateFileMeta.size,
-        tipoContenido: certificateFileMeta.type || certificateFileMeta.contentType,
-        rutaStorage: certificateFileMeta.storagePath || "",
-        downloadUrl: certificateFileMeta.downloadUrl || "",
-      }
-    : null,
+  requiereCertificado: Boolean(certificateReference || certificateFileMeta),
+  estadoDurantePeriodo: "ausente",
   estado: status || "",
   creadoPor: createdBy || "",
 });

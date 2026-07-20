@@ -8,11 +8,11 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 
 ## Componentes
 
-1. `localStorage`: espejo inmediato para actualizar la interfaz y conservar compatibilidad con los modulos existentes.
-2. IndexedDB `dss-salud-ocupacional`: almacena validaciones, historiales, planes, borradores, cola y adjuntos temporales.
-3. Cola `app_operation_queue`: guarda operaciones en orden cronologico con ID estable, propietario, version de esquema, reintentos y proximo intento.
+1. `localStorage`: conserva solo metadatos operativos y de interfaz; no contiene payloads clinicos en modo Firebase.
+2. IndexedDB `dss-salud-ocupacional`: almacena contenido temporal cifrado con AES-GCM mediante Web Crypto.
+3. Cola `app_operation_queue`: guarda en claro solo ID, tipo, propietario, version, estado y reintentos; el payload se referencia mediante `payloadRef`.
 4. Sincronizador: escucha el evento `online` y reintenta periodicamente con backoff exponencial de 5 segundos a 5 minutos.
-5. Firestore persistent cache: se habilita expresamente solo en dispositivos confiables mediante `VITE_FIREBASE_TRUSTED_DEVICE=true`.
+5. Firestore utiliza cache en memoria. La continuidad entre sesiones depende de la cola cifrada controlada por la aplicacion.
 6. Service worker: en builds de produccion y con `VITE_ENABLE_OFFLINE_SHELL=true`, conserva el shell para poder volver a abrir la aplicacion sin red.
 
 ## Indicadores de sincronizacion del dashboard
@@ -28,7 +28,7 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 
 - Cada operacion posee un `id` estable y un `ownerId`.
 - Solo la sesion autenticada propietaria procesa sus operaciones.
-- Los adjuntos se guardan como `Blob` en IndexedDB; no se introduce base64 en la cola ni en Firestore.
+- Los payloads y adjuntos se cifran con AES-GCM antes de persistirse en IndexedDB; no aparecen en claro en la cola ni en Firestore.
 - La ruta de Storage deriva del ID de operacion, por lo que un reintento sobrescribe el mismo objeto y no genera copias.
 - Firestore registra `sourceOperationId`, `syncVersion`, `clientUpdatedAt` y `updatedAt` del servidor.
 - Borradores: politica de ultima escritura, apropiada para contenido editable no consolidado.
@@ -47,10 +47,10 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 
 ## Seguridad de cache
 
-- La persistencia Firestore entre sesiones esta deshabilitada por defecto.
-- Debe habilitarse solo en un equipo institucional o personal confiable.
-- Al cerrar sesion Firebase se eliminan de la cache de aplicacion los historiales, validaciones, planes, borradores y nomina hidratada.
-- Las operaciones pendientes y sus adjuntos se preservan para evitar perdida de trabajo y quedan aisladas por propietario.
+- La persistencia general de Firestore entre sesiones esta deshabilitada para evitar copias clinicas fuera del control de la aplicacion.
+- La clave AES-GCM del dispositivo es no extraible; protege frente a lectura directa del almacenamiento, aunque no reemplaza la seguridad del equipo ni evita el acceso desde una sesion comprometida.
+- Al cerrar sesion Firebase se eliminan de la cache de aplicacion historiales, validaciones, planes, borradores, ausencias y alertas detalladas.
+- Las operaciones pendientes permanecen cifradas para evitar perdida de trabajo y quedan aisladas por propietario.
 - Los certificados remotos no se almacenan en base64; se conserva su referencia de Storage.
 
 ## Configuracion para defensa
@@ -58,7 +58,6 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 Agregar a `.env.firebase`:
 
 ```env
-VITE_FIREBASE_TRUSTED_DEVICE="true"
 VITE_ENABLE_OFFLINE_SHELL="true"
 ```
 
@@ -74,11 +73,22 @@ npm run preview -- --host
 1. Abrir el build conectado e iniciar sesion.
 2. Seleccionar modo Offline en DevTools, pestaña Network.
 3. Registrar o guardar un borrador con un archivo valido.
-4. Verificar en Application > IndexedDB que existe la operacion y el adjunto temporal.
-5. Confirmar que Firestore aun no contiene el cambio.
-6. Volver a Online.
-7. Verificar que la cola desaparece, el archivo se sube una sola vez y Firestore contiene `sourceOperationId`, `syncVersion`, `clientUpdatedAt` y `updatedAt`.
-8. Cerrar sesion y comprobar que los datos medicos hidratados se eliminan de la cache de aplicacion.
+4. Verificar en Application > Local Storage que la operacion solo contiene `payloadRef` y no contiene diagnostico, notas ni archivo.
+5. Verificar en IndexedDB `secureData` que el contenido aparece como `ciphertext` e `iv`, no como texto medico legible.
+6. Confirmar que Firestore aun no contiene el cambio.
+7. Volver a Online.
+8. Verificar que la cola desaparece, el archivo se sube una sola vez y Firestore contiene `sourceOperationId`, `syncVersion`, `clientUpdatedAt` y `updatedAt`.
+9. Cerrar sesion y comprobar que los datos medicos hidratados se eliminan de la cache de aplicacion.
+
+## Saneamiento de documentos historicos
+
+Despues de desplegar Functions, iniciar sesion como `superAdmin` y ejecutar una sola vez en la consola:
+
+```js
+await window.sanitizeAdministrativeAbsences()
+```
+
+La Function elimina de los documentos existentes en `ausencias` los campos clinicos heredados y registra el resultado en `auditoria`. Es idempotente: una segunda ejecucion informa cero documentos pendientes de saneamiento.
 
 ## Limite que debe explicarse
 

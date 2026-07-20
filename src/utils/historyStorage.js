@@ -2,35 +2,21 @@ import {
   MEDICAL_HISTORY_STORAGE_KEY,
   MEDICAL_HISTORY_UPDATED_EVENT,
 } from "./storageKeys.js";
-import { readEntity, saveEntity } from "./indexedDbClient.js";
+import { createProtectedOperationalStore } from "./protectedOperationalStore.js";
 
 const IDB_STORE = "history";
 const IDB_KEY = "records";
 
-const isBrowser = () => typeof window !== "undefined";
+const store = createProtectedOperationalStore({
+  storageKey: MEDICAL_HISTORY_STORAGE_KEY,
+  eventName: MEDICAL_HISTORY_UPDATED_EVENT,
+  legacyStore: IDB_STORE,
+  legacyKey: IDB_KEY,
+  emptyValue: {},
+});
 
-const readRawHistory = () => {
-  if (!isBrowser()) return {};
-  try {
-    const raw = window.localStorage.getItem(MEDICAL_HISTORY_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    if (!raw) syncFromIndexedDb();
-    return parsed;
-  } catch (error) {
-    console.warn("No se pudo leer el historial medico:", error);
-    return {};
-  }
-};
-
-const persistHistory = (records) => {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(
-    MEDICAL_HISTORY_STORAGE_KEY,
-    JSON.stringify(records),
-  );
-  window.dispatchEvent(new Event(MEDICAL_HISTORY_UPDATED_EVENT));
-  saveEntity(IDB_STORE, IDB_KEY, records);
-};
+const readRawHistory = () => store.read();
+const persistHistory = (records) => store.replace(records);
 
 const dedupeEntries = (entries = []) => {
   const seen = new Set();
@@ -45,26 +31,6 @@ const dedupeEntries = (entries = []) => {
     deduped.push(item);
   });
   return deduped;
-};
-
-const syncFromIndexedDb = async () => {
-  if (!isBrowser()) return;
-  try {
-    const idbValue = await readEntity(IDB_STORE, IDB_KEY);
-    if (!idbValue) return;
-    const raw = window.localStorage.getItem(MEDICAL_HISTORY_STORAGE_KEY);
-    const localValue = raw ? JSON.parse(raw) : {};
-    const isDifferent = JSON.stringify(localValue) !== JSON.stringify(idbValue);
-    if (isDifferent) {
-      window.localStorage.setItem(
-        MEDICAL_HISTORY_STORAGE_KEY,
-        JSON.stringify(idbValue),
-      );
-      window.dispatchEvent(new Event(MEDICAL_HISTORY_UPDATED_EVENT));
-    }
-  } catch (error) {
-    console.warn("No se pudo sincronizar historial desde IndexedDB:", error);
-  }
 };
 
 export const readEmployeeHistory = (employeeKey) => {
@@ -210,3 +176,5 @@ export const importHistoryFromCSV = (text) => {
 
 export const exportHistoryAsJSON = () =>
   JSON.stringify(readRawHistory(), null, 2);
+
+export const clearHistoryCache = () => store.clear();

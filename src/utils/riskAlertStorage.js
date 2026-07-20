@@ -3,8 +3,16 @@ import {
   RISK_ALERT_SUMMARY_STORAGE_KEY,
   RISK_ALERTS_UPDATED_EVENT,
 } from "./storageKeys.js";
+import { createProtectedOperationalStore } from "./protectedOperationalStore.js";
 
 const isBrowser = () => typeof window !== "undefined";
+const alertStore = createProtectedOperationalStore({
+  storageKey: RISK_ALERTS_STORAGE_KEY,
+  eventName: RISK_ALERTS_UPDATED_EVENT,
+  legacyStore: "secureData",
+  legacyKey: "risk-alerts-legacy",
+  emptyValue: [],
+});
 
 const readJson = (key, fallback) => {
   if (!isBrowser()) return fallback;
@@ -23,14 +31,18 @@ const persist = (key, value) => {
   window.dispatchEvent(new Event(RISK_ALERTS_UPDATED_EVENT));
 };
 
-export const readRiskAlerts = () =>
-  readJson(RISK_ALERTS_STORAGE_KEY, []);
+export const readRiskAlerts = () => {
+  const alerts = alertStore.read();
+  return Array.isArray(alerts) ? alerts : [];
+};
 
 export const replaceRiskAlerts = (alerts = []) =>
-  persist(RISK_ALERTS_STORAGE_KEY, Array.isArray(alerts) ? alerts : []);
+  alertStore.replace(Array.isArray(alerts) ? alerts : []);
 
 export const readRiskAlertSummary = () =>
   readJson(RISK_ALERT_SUMMARY_STORAGE_KEY, null);
 
 export const replaceRiskAlertSummary = (summary = null) =>
   persist(RISK_ALERT_SUMMARY_STORAGE_KEY, summary);
+
+export const clearRiskAlertCache = () => alertStore.clear();

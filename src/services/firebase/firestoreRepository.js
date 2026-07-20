@@ -1,5 +1,6 @@
 import {
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   runTransaction,
@@ -253,6 +254,48 @@ const deleteDraft = async (db, operation) => {
   await deleteDoc(doc(db, "borradores", draftId));
 };
 
+const clinicalAbsenceFieldsToDelete = () => ({
+  diagnostico: deleteField(),
+  grupoPatologia: deleteField(),
+  cie10: deleteField(),
+  observacionesAdicionales: deleteField(),
+  institucionMedica: deleteField(),
+  certificadoDigital: deleteField(),
+});
+
+const writeAbsence = async (db, operation) => {
+  const absence = operation.payload?.absence || operation.payload || {};
+  const absenceId =
+    absence.absenceId || operation.payload?.absenceId || operation.entityId;
+  if (!absenceId) {
+    throw new Error("No se pudo sincronizar ausencia sin identificador.");
+  }
+  const absenceRef = doc(db, "ausencias", absenceId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(absenceRef);
+    const existing = snapshot.data() || {};
+    if (existing.sourceOperationId === operation.id) return;
+    transaction.set(
+      absenceRef,
+      stripUndefined({
+        ...mapAbsenceFormToFirestore({
+          formValues: absence,
+          absenceDays: absence.absenceDays,
+          certificateReference: "",
+          requiresApproval: absence.requiresApproval,
+          status: absence.status || "registrada",
+          createdBy: operation.user,
+        }),
+        absenceId,
+        creadoEn: existing.creadoEn || serverTimestamp(),
+        ...clinicalAbsenceFieldsToDelete(),
+        ...buildSyncMetadata(operation, existing),
+      }),
+      { merge: true },
+    );
+  });
+};
+
 const writeCertificate = async (db, operation) => {
   const certificate = operation.payload?.certificate || operation.payload || {};
   const reference =
@@ -306,6 +349,7 @@ const writeCertificate = async (db, operation) => {
         }),
         absenceId: reference,
         creadoEn: serverTimestamp(),
+        ...clinicalAbsenceFieldsToDelete(),
         ...buildSyncMetadata(operation),
       })),
       { merge: true },
@@ -418,6 +462,10 @@ export const syncOperationToFirestore = async (operation) => {
 
     if (preparedOperation.type === "submitCertificate") {
       await writeCertificate(db, preparedOperation);
+    }
+
+    if (preparedOperation.type === "submitAbsence") {
+      await writeAbsence(db, preparedOperation);
     }
 
     if (preparedOperation.type === "validateCertificate") {

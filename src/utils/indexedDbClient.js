@@ -1,5 +1,5 @@
 const DB_NAME = "dss-salud-ocupacional";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NAMES = [
   "validations",
   "history",
@@ -7,6 +7,9 @@ const STORE_NAMES = [
   "drafts",
   "queue",
   "attachments",
+  "absences",
+  "secureKeys",
+  "secureData",
 ];
 
 let dbPromise = null;

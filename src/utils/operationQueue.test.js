@@ -48,6 +48,30 @@ describe("operationQueue offline-first", () => {
     expect(readOperationQueue()).toHaveLength(1);
   });
 
+  it("no expone el payload operativo en localStorage", async () => {
+    enqueueOperation(
+      "submitCertificate",
+      { diagnostico: "dato clinico de prueba" },
+      { id: "op-secure", user: "medico@test" },
+    );
+
+    const stored = JSON.parse(
+      window.localStorage.getItem("app_operation_queue") || "[]",
+    );
+    expect(stored[0].payload).toBeUndefined();
+    expect(stored[0].payloadRef).toBe("operation:op-secure");
+    expect(JSON.stringify(stored)).not.toContain("dato clinico de prueba");
+
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    await processQueue(handler, { ownerIds: ["medico@test"] });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: { diagnostico: "dato clinico de prueba" },
+      }),
+    );
+  });
+
   it("aplica backoff exponencial con limite", () => {
     expect(calculateRetryDelay(1)).toBe(5000);
     expect(calculateRetryDelay(2)).toBe(10000);
