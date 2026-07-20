@@ -14,6 +14,7 @@ import { isFirebaseProvider } from "./services/appMode.js";
 import { initializePerformanceMonitoring } from "./services/observability.js";
 import { clearSensitiveOperationalCache } from "./utils/sensitiveCache.js";
 import { registerOfflineShell } from "./services/offlineShell.js";
+import { DASHBOARD_SYNC_INTERVAL_MS } from "./utils/syncStatus.js";
 
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000;
 const SESSION_LAST_ACTIVITY_KEY = "sessionLastActivityAt";
@@ -186,7 +187,12 @@ function App() {
     if (!isFirebaseEnabled || !isAuthenticated || !userRole) return undefined;
     let cancelled = false;
     let unsubscribeRealtime;
+    let hydrationTimeoutId;
+    let hydrating = false;
     const hydrate = () => {
+      if (cancelled || hydrating) return;
+      window.clearTimeout(hydrationTimeoutId);
+      hydrating = true;
       import("./services/firebase/firestoreHydration.js")
         .then(({ hydrateFirebaseData }) =>
           hydrateFirebaseData({ user: currentUser, role: userRole }),
@@ -198,9 +204,20 @@ function App() {
             role: userRole,
             metadata: { error: error?.message || "Error desconocido" },
           });
+        })
+        .finally(() => {
+          hydrating = false;
+          if (!cancelled) {
+            hydrationTimeoutId = window.setTimeout(
+              hydrate,
+              DASHBOARD_SYNC_INTERVAL_MS,
+            );
+          }
         });
     };
+    const onlineHandler = () => hydrate();
     hydrate();
+    window.addEventListener("online", onlineHandler);
     import("./services/firebase/firestoreHydration.js")
       .then(({ startFirebaseRealtimeSync }) => {
         if (cancelled) return;
@@ -217,13 +234,13 @@ function App() {
           metadata: { error: error?.message || "Error desconocido" },
         });
       });
-    const intervalId = window.setInterval(hydrate, 60 * 1000);
     return () => {
       cancelled = true;
       if (typeof unsubscribeRealtime === "function") {
         unsubscribeRealtime();
       }
-      window.clearInterval(intervalId);
+      window.removeEventListener("online", onlineHandler);
+      window.clearTimeout(hydrationTimeoutId);
     };
   }, [currentUser, isAuthenticated, isFirebaseEnabled, userRole]);
 

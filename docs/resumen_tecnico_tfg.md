@@ -273,6 +273,13 @@ Destinos actuales:
 
 ## Dashboard
 
+- Se conserva la composicion visual aprobada en el prototipo del TFG: tres KPI, mapa de calor sectorial, evolucion del riesgo y estado de sincronizacion.
+- `Ultima actualizacion` se vincula a una hidratacion Firebase completa y satisfactoria, no a cualquier evento local.
+- `Siguiente sync automatica` ejecuta una cuenta regresiva real de 150 segundos hasta la siguiente hidratacion completa.
+- Este ciclo es un respaldo de consistencia: convive con listeners Firestore en tiempo real y con la cola Offline-First, que procesa cada 15 segundos y al recuperar conectividad.
+- El evento `online` tambien dispara una hidratacion completa inmediata; una ejecucion en curso impide ciclos concurrentes.
+- En modo local, el mismo intervalo recarga los repositorios del navegador sin modificar el aspecto presentado al tribunal.
+
 Implementado:
 
 - Tasa de ausentismo.

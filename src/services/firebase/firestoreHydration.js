@@ -30,6 +30,7 @@ import {
 import { rebuildFirebaseAlertSummary } from "./alertService.js";
 import { rebuildFirebaseRiskIndicator } from "./alertService.js";
 import { replaceRiskIndicator } from "../../utils/riskIndicatorStorage.js";
+import { recordDashboardSyncSuccess } from "../../utils/syncStatus.js";
 
 const toDateString = (value) => {
   if (!value) return "";
@@ -482,6 +483,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     },
     },
   );
+
+  if (!failedCollections.length) {
+    recordDashboardSyncSuccess();
+  }
 
   return {
     empleados: empleados.length,

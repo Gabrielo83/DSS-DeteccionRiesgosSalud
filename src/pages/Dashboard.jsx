@@ -31,6 +31,12 @@ import {
 } from "../utils/riskAlertStorage.js";
 import { isFirebaseProvider } from "../services/appMode.js";
 import { readRiskIndicator } from "../utils/riskIndicatorStorage.js";
+import {
+  DASHBOARD_SYNC_INTERVAL_MS,
+  DASHBOARD_SYNC_SUCCESS_EVENT,
+  readLastDashboardSync,
+  recordDashboardSyncSuccess,
+} from "../utils/syncStatus.js";
 
 const levelToneMap = {
   Alta: "bg-rose-100 text-rose-700",
@@ -73,7 +79,6 @@ const extractScoreValue = (input) => {
 
 const MIN_RECURRENT_COUNT = 3;
 const RECURRENCE_WINDOW_MONTHS = 6;
-const AUTO_SYNC_INTERVAL_MS = 150 * 1000;
 const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
   new Date(2024, i, 1).toLocaleDateString("es-AR", { month: "long" }),
 );
@@ -338,7 +343,9 @@ function Dashboard({ isDark, onToggleTheme }) {
   const today = useMemo(() => new Date(), []);
   const [periodMonth, setPeriodMonth] = useState(today.getMonth());
   const [periodYear, setPeriodYear] = useState(today.getFullYear());
-  const [lastRefresh, setLastRefresh] = useState(() => new Date());
+  const [lastRefresh, setLastRefresh] = useState(() =>
+    firebaseMode ? readLastDashboardSync("firebase") : new Date(),
+  );
   const [countdownLabel, setCountdownLabel] = useState("02:30");
   const [historyModal, setHistoryModal] = useState({
     isOpen: false,
@@ -1058,7 +1065,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       setRiskAlerts(readRiskAlerts());
       setRiskAlertSummary(readRiskAlertSummary());
       setRiskIndicator(readRiskIndicator());
-      setLastRefresh(new Date());
+      if (!firebaseMode) setLastRefresh(new Date());
     };
     refreshAll();
     window.addEventListener(EMPLOYEES_UPDATED_EVENT, refreshAll);
@@ -1083,7 +1090,42 @@ function Dashboard({ isDark, onToggleTheme }) {
       window.removeEventListener(RISK_INDICATOR_UPDATED_EVENT, refreshAll);
       window.removeEventListener("storage", refreshAll);
     };
-  }, []);
+  }, [firebaseMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleSyncSuccess = (event) => {
+      const expectedSource = firebaseMode ? "firebase" : "local";
+      if (event.detail?.source !== expectedSource) return;
+      const completedAt = new Date(event.detail?.completedAt || Date.now());
+      if (!Number.isNaN(completedAt.getTime())) setLastRefresh(completedAt);
+    };
+    window.addEventListener(DASHBOARD_SYNC_SUCCESS_EVENT, handleSyncSuccess);
+    return () => {
+      window.removeEventListener(
+        DASHBOARD_SYNC_SUCCESS_EVENT,
+        handleSyncSuccess,
+      );
+    };
+  }, [firebaseMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || firebaseMode) return undefined;
+    const refreshLocalRepositories = () => {
+      recordDashboardSyncSuccess(new Date(), "local");
+      setEmployees(readEmployees());
+      setValidationQueue(readValidationQueue());
+      setHistorySnapshot(readAllHistory());
+      setRiskAlerts(readRiskAlerts());
+      setRiskAlertSummary(readRiskAlertSummary());
+      setRiskIndicator(readRiskIndicator());
+    };
+    const timeoutId = window.setTimeout(
+      refreshLocalRepositories,
+      DASHBOARD_SYNC_INTERVAL_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [firebaseMode, lastRefresh]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1107,7 +1149,10 @@ function Dashboard({ isDark, onToggleTheme }) {
       if (!lastRefresh) return;
       const now = Date.now();
       const elapsed = now - lastRefresh.getTime();
-      const remaining = Math.max(0, AUTO_SYNC_INTERVAL_MS - elapsed);
+      const remaining = Math.max(
+        0,
+        DASHBOARD_SYNC_INTERVAL_MS - elapsed,
+      );
       const minutes = String(Math.floor(remaining / 60000)).padStart(2, "0");
       const seconds = String(Math.floor((remaining % 60000) / 1000)).padStart(
         2,

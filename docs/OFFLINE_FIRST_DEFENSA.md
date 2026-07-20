@@ -15,6 +15,15 @@ La aplicacion no usa RxDB como dependencia. RxDB es la referencia conceptual cit
 5. Firestore persistent cache: se habilita expresamente solo en dispositivos confiables mediante `VITE_FIREBASE_TRUSTED_DEVICE=true`.
 6. Service worker: en builds de produccion y con `VITE_ENABLE_OFFLINE_SHELL=true`, conserva el shell para poder volver a abrir la aplicacion sin red.
 
+## Indicadores de sincronizacion del dashboard
+
+- `Ultima actualizacion` representa la ultima hidratacion completa terminada sin fallos en Firebase. No avanza por una modificacion meramente local.
+- `Siguiente sync automatica` es la cuenta regresiva real hasta la proxima hidratacion completa, programada 150 segundos despues de finalizar el ciclo anterior.
+- Los listeners de Firestore siguen actualizando los datos en tiempo real entre ciclos.
+- Al recuperar conectividad se ejecuta inmediatamente una hidratacion completa y se reinicia el contador solo si finaliza sin fallos.
+- La cola Offline-First mantiene un proceso independiente cada 15 segundos y tambien reacciona inmediatamente al evento `online`.
+- En modo local, el mismo indicador corresponde a la recarga periodica de los repositorios del navegador, conservando la presentacion prevista en el TFG.
+
 ## Coherencia e idempotencia
 
 - Cada operacion posee un `id` estable y un `ownerId`.
