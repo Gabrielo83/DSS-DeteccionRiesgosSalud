@@ -163,14 +163,18 @@ Storage:
 - No se persiste base64 en Firestore.
 - Se guarda:
   - `rutaStorage`
-  - `downloadUrl`
+  - `downloadUrl` solo en registros historicos
   - nombre
   - tamano
   - tipoContenido
+- Los certificados nuevos se recuperan mediante el SDK autenticado y una URL temporal en memoria.
 
 Reglas de Storage:
 
-- Solo usuarios autenticados.
+- Lectura clinica: `superAdmin`, `medico` y `administrativoSalud`.
+- Carga operativa: `superAdmin`, `medico`, `administrativo`, `administrativoSalud` y `respRRHH`.
+- Cada objeto registra el UID del cargador; solo ese usuario puede reintentar o reemplazar la misma ruta.
+- Eliminacion exclusiva de `superAdmin`.
 - Archivos permitidos: PDF, JPG, PNG.
 - Tamano maximo: 5 MB.
 
@@ -493,7 +497,8 @@ Firestore:
 
 Storage:
 
-- Certificados solo para usuarios autenticados.
+- Certificados legibles solo por roles clinicos.
+- Los roles operativos pueden cargar archivos sin obtener acceso posterior de consulta clinica.
 - Ruta esperada: `certificados/{reference}/{archivo}`.
 - Maximo 5 MB.
 - Tipos permitidos: `application/pdf`, `image/jpeg`, `image/png`.

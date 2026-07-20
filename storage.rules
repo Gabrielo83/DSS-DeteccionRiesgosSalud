@@ -6,6 +6,32 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function role() {
+      return signedIn()
+        ? firestore.get(
+            /databases/(default)/documents/usuarios/$(request.auth.uid)
+          ).data.rol
+        : "";
+    }
+
+    function hasAnyRole(roles) {
+      return signedIn() && role() in roles;
+    }
+
+    function isClinical() {
+      return hasAnyRole(["superAdmin", "medico", "administrativoSalud"]);
+    }
+
+    function isOperational() {
+      return hasAnyRole([
+        "superAdmin",
+        "medico",
+        "administrativo",
+        "administrativoSalud",
+        "respRRHH"
+      ]);
+    }
+
     function isAllowedCertificateFile() {
       return request.resource != null
         && request.resource.size <= 5 * 1024 * 1024
@@ -16,9 +42,26 @@ service firebase.storage {
         ];
     }
 
+    function isOwnedUpload() {
+      return request.resource != null
+        && request.resource.metadata.uploaderUid == request.auth.uid;
+    }
+
+    function isOwnedReplacement() {
+      return resource != null
+        && resource.metadata.uploaderUid == request.auth.uid
+        && isOwnedUpload();
+    }
+
     match /certificados/{reference}/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn() && isAllowedCertificateFile();
+      allow read: if isClinical();
+      allow create: if isOperational()
+        && isAllowedCertificateFile()
+        && isOwnedUpload();
+      allow update: if isOperational()
+        && isAllowedCertificateFile()
+        && isOwnedReplacement();
+      allow delete: if hasAnyRole(["superAdmin"]);
     }
 
     match /{allPaths=**} {

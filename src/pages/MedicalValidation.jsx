@@ -29,6 +29,11 @@ import {
 import { appendAuditLog } from "../utils/auditLog.js";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import AuthContext from "../context/AuthContext.jsx";
+import {
+  hasCertificateDocument,
+  loadCertificatePreview,
+  releaseCertificatePreview,
+} from "../services/firebase/certificateStorage.js";
 
 const riskLevelToneMap = {
   Alta: "bg-rose-100 text-rose-700",
@@ -737,9 +742,28 @@ function MedicalValidation({ isDark, onToggleTheme }) {
       storedPlan ? planToDraftText(storedPlan) : templateDraft,
     );
     setIsModalOpen(true);
+    if (hasCertificateDocument(row.certificateFileMeta)) {
+      loadCertificatePreview(row.certificateFileMeta)
+        .then((certificateFileMeta) => {
+          setSelectedCertificate((current) =>
+            current?.reference === row.reference
+              ? { ...current, certificateFileMeta }
+              : current,
+          );
+        })
+        .catch((error) => {
+          appendAuditLog("certificate_view_failed", {
+            entityId: row.reference,
+            metadata: {
+              error: error?.message || "No se pudo abrir el certificado.",
+            },
+          });
+        });
+    }
   };
 
   const closeModal = () => {
+    releaseCertificatePreview(selectedCertificate?.certificateFileMeta);
     setIsModalOpen(false);
     setSelectedCertificate(null);
     setReviewNotes("");

@@ -59,7 +59,9 @@ const mapCertificateMetaFromFirestore = (certificadoDigital) => {
     contentType: certificadoDigital.tipoContenido || "",
     storagePath: certificadoDigital.rutaStorage || "",
     downloadUrl: certificadoDigital.downloadUrl || "",
-    previewUrl: certificadoDigital.downloadUrl || "",
+    previewUrl: certificadoDigital.rutaStorage
+      ? ""
+      : certificadoDigital.downloadUrl || "",
   };
 };
 

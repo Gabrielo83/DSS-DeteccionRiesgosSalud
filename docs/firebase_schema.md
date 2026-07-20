@@ -184,9 +184,11 @@ sincroniza e hidrata datos contra estas colecciones.
 Notas
 - Usar reference como docId en validaciones_medicas y historial_medico para evitar duplicados.
 - Storage de certificados: `certificados/{reference}/{timestamp}-{filename}`.
-- Firestore no debe persistir `previewUrl` local/base64; debe guardar `storagePath` y `downloadUrl`.
+- Firestore no debe persistir `previewUrl` local/base64; para registros nuevos debe guardar `storagePath`. `downloadUrl` se conserva solo por compatibilidad con registros historicos.
+- La vista clinica descarga el objeto mediante el SDK autenticado y genera una URL temporal en memoria.
 - `operations` es bitacora tecnica de sincronizacion; el dato funcional vive en colecciones de dominio.
 - Las reglas de Storage aceptan solo PDF/JPG/PNG de hasta 5 MB.
+- Las reglas de Storage permiten lectura a `superAdmin`, `medico` y `administrativoSalud`; los roles operativos solo pueden cargar y reintentar sus propios objetos.
 - Las reglas de Firestore limitan datos clinicos a `superAdmin`, `medico` y `administrativoSalud`.
 - `alertas_riesgo` es de solo lectura para roles clinicos; solo Cloud Functions escribe o resuelve alertas.
 

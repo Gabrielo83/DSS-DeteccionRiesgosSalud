@@ -14,6 +14,12 @@ import {
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
+import { appendAuditLog } from "../utils/auditLog.js";
+import {
+  hasCertificateDocument,
+  loadCertificatePreview,
+  releaseCertificatePreview,
+} from "../services/firebase/certificateStorage.js";
 
 const studyTemplates = [
   {
@@ -469,12 +475,28 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
     if (Number.isNaN(numeric)) return `Dias: ${value}`;
     return `Dias otorgados: ${numeric} ${numeric === 1 ? "dia" : "dias"}`;
   };
-  const openDocumentViewer = (certificate) => {
-    if (!certificate?.documentMeta?.previewUrl) return;
-    setDocumentViewer({ isOpen: true, certificate });
+  const openDocumentViewer = async (certificate) => {
+    if (!hasCertificateDocument(certificate?.documentMeta)) return;
+    try {
+      const documentMeta = await loadCertificatePreview(
+        certificate.documentMeta,
+      );
+      setDocumentViewer({
+        isOpen: true,
+        certificate: { ...certificate, documentMeta },
+      });
+    } catch (error) {
+      appendAuditLog("certificate_view_failed", {
+        entityId: certificate.reference || certificate.id,
+        metadata: { error: error?.message || "No se pudo abrir el certificado." },
+      });
+      setDocumentViewer({ isOpen: true, certificate });
+    }
   };
-  const closeDocumentViewer = () =>
+  const closeDocumentViewer = () => {
+    releaseCertificatePreview(documentViewer.certificate?.documentMeta);
     setDocumentViewer({ isOpen: false, certificate: null });
+  };
   const activeDocument = documentViewer.certificate;
   const activePreview = activeDocument?.documentMeta?.previewUrl || "";
   const activeDocumentType = activeDocument?.documentMeta?.type || "";
@@ -824,9 +846,9 @@ export default function MedicalRecords({ isDark, onToggleTheme }) {
                       <button
                         type="button"
                         onClick={() => openDocumentViewer(certificate)}
-                        disabled={!certificate.documentMeta?.previewUrl}
+                        disabled={!hasCertificateDocument(certificate.documentMeta)}
                         className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                          certificate.documentMeta?.previewUrl
+                          hasCertificateDocument(certificate.documentMeta)
                             ? "border-slate-300 text-slate-700 hover:border-slate-500 hover:text-slate-900 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-400"
                             : "cursor-not-allowed border-slate-200 text-slate-400 opacity-70 dark:border-slate-800 dark:text-slate-600"
                         }`}

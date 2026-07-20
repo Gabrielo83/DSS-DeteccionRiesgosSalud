@@ -6,7 +6,7 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { ref, uploadBytes } from "firebase/storage";
 import { getFirebaseServices } from "./firebaseClient.js";
 import {
   mapAbsenceFormToFirestore,
@@ -115,6 +115,7 @@ const uploadCertificateFile = async (
   reference,
   certificate,
   operationId,
+  uploaderUid,
 ) => {
   const fileMeta = certificate?.certificateFileMeta;
   const hasLocalFile = fileMeta?.previewBlob || fileMeta?.previewUrl;
@@ -129,16 +130,15 @@ const uploadCertificateFile = async (
   const safeOperationId = sanitizeFileName(operationId || reference);
   const storagePath = `certificados/${reference}/${safeOperationId}-${safeName}`;
   const storageReference = ref(storage, storagePath);
-  let downloadUrl = "";
   try {
     await uploadBytes(storageReference, blob, {
       contentType: fileMeta.type || blob.type || "application/octet-stream",
       customMetadata: {
         reference,
         originalName: fileMeta.name || safeName,
+        uploaderUid,
       },
     });
-    downloadUrl = await getDownloadURL(storageReference);
     appendAuditLog("certificate_upload_success", {
       entityId: reference,
       metadata: {
@@ -163,13 +163,17 @@ const uploadCertificateFile = async (
     certificateFileMeta: {
       ...stripTransientFileData(fileMeta),
       storagePath,
-      downloadUrl,
-      previewUrl: downloadUrl,
+      downloadUrl: "",
+      previewUrl: "",
     },
   };
 };
 
-const prepareSubmitCertificateOperation = async (storage, operation) => {
+const prepareSubmitCertificateOperation = async (
+  storage,
+  operation,
+  uploaderUid,
+) => {
   const certificate = operation.payload?.certificate || operation.payload || {};
   const reference =
     certificate.reference || operation.payload?.reference || operation.entityId;
@@ -179,6 +183,7 @@ const prepareSubmitCertificateOperation = async (storage, operation) => {
     reference,
     certificate,
     operation.id,
+    uploaderUid,
   );
   return {
     ...operation,
@@ -381,7 +386,7 @@ const writeCertificateDecision = async (db, operation) => {
 };
 
 export const syncOperationToFirestore = async (operation) => {
-  const { db, storage } = getFirebaseServices();
+  const { auth, db, storage } = getFirebaseServices();
   if (operation.type === "submitCertificate") {
     const certificate = operation.payload?.certificate || operation.payload || {};
     const reference =
@@ -393,7 +398,11 @@ export const syncOperationToFirestore = async (operation) => {
   }
   const preparedOperation =
     operation.type === "submitCertificate"
-      ? await prepareSubmitCertificateOperation(storage, operation)
+      ? await prepareSubmitCertificateOperation(
+          storage,
+          operation,
+          auth.currentUser?.uid || "",
+        )
       : operation;
 
   await writeOperationAudit(db, preparedOperation, "processing");
