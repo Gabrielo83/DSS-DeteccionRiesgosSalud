@@ -543,6 +543,16 @@ Evidencia automatizada:
 - Permanencia cifrada de `submitAbsence` sin red y sincronizacion al reconectar.
 - Escritura Firebase en `ausencias` sin crear `validaciones_medicas`.
 
+## Notificacion administrativa a RR. HH.
+
+- El rol `respRRHH` recibe en la campanita las ausencias registradas que todavia no atendio.
+- La fuente es la proyeccion administrativa de `ausencias`; no se consulta `validaciones_medicas` ni `historial_medico`.
+- La notificacion muestra solamente nombre del empleado, tipo de ausencia, sector, periodo y cantidad de dias.
+- Diagnostico, CIE-10, patologia, notas y documento medico no forman parte del constructor de la notificacion.
+- `startFirebaseRealtimeSync` escucha `ausencias` mediante `onSnapshot`. Cada snapshot actualiza el repositorio local protegido y emite `absences-updated`; `AppHeader` responde a ese evento sin recargar la pagina.
+- Al abrir una notificacion se registra su clave `absence:{absenceId}` como atendida y disminuye el contador de la campanita.
+- Las pruebas automatizadas introducen deliberadamente diagnostico, CIE-10 y un nombre de documento en un objeto de prueba y confirman que ninguno se renderiza.
+
 ## Pruebas ejecutadas habitualmente
 
 ```bash

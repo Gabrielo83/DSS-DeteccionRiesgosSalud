@@ -6,9 +6,11 @@ import { readValidationQueue } from "../utils/validationStorage.js";
 import {
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
   ABSENCE_DRAFTS_UPDATED_EVENT,
+  ABSENCES_UPDATED_EVENT,
   AUDIT_LOG_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
 import { readDrafts } from "../utils/draftStorage.js";
+import { readAbsences } from "../utils/absenceStorage.js";
 import { readAuditLog } from "../utils/auditLog.js";
 import { getDataProvider, DATA_PROVIDERS } from "../services/appMode.js";
 
@@ -154,6 +156,52 @@ const buildSecurityAuditNotification = (event, fallbackHref) => {
     };
   }
   return null;
+};
+
+const absenceTypeLabels = {
+  enfermedad: "Enfermedad",
+  accidente: "Accidente",
+  "licencia-personal": "Licencia personal",
+  vacaciones: "Vacaciones",
+  "permiso-especial": "Permiso especial",
+};
+
+const formatAbsenceDate = (value) => {
+  if (!value) return "";
+  const [year, month, day] = String(value).slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : "";
+};
+
+const buildAdministrativeAbsenceNotification = (absence, fallbackHref) => {
+  const absenceId = absence.absenceId || absence.id;
+  if (!absenceId) return null;
+  const typeLabel =
+    absenceTypeLabels[absence.absenceType] ||
+    absence.absenceType ||
+    "Ausencia";
+  const startDate = formatAbsenceDate(absence.startDate);
+  const endDate = formatAbsenceDate(absence.endDate);
+  const period =
+    startDate && endDate
+      ? startDate === endDate
+        ? startDate
+        : `${startDate} - ${endDate}`
+      : startDate || endDate;
+  const days = Number(absence.absenceDays);
+  const metadata = [
+    absence.sector,
+    period,
+    Number.isFinite(days) ? `${days} ${days === 1 ? "dia" : "dias"}` : "",
+  ].filter(Boolean);
+  return {
+    id: `absence-${absenceId}`,
+    ackKey: `absence:${absenceId}`,
+    tone: "sky",
+    title: "Nueva ausencia registrada",
+    description: `${absence.employeeName || "Colaborador"} - ${typeLabel}`,
+    meta: metadata.join(" · "),
+    href: fallbackHref,
+  };
 };
 
 const roleDisplayMap = {
@@ -320,6 +368,10 @@ function AppHeader({ active, isDark, onToggleTheme }) {
     if (typeof window === "undefined") return [];
     return readDrafts();
   });
+  const [absenceRecords, setAbsenceRecords] = useState(() => {
+    if (typeof window === "undefined") return [];
+    return readAbsences();
+  });
   const [auditEvents, setAuditEvents] = useState(() => {
     if (typeof window === "undefined") return [];
     return readAuditLog();
@@ -369,6 +421,7 @@ function AppHeader({ active, isDark, onToggleTheme }) {
     const items = [];
     const acknowledgedSet = new Set(acknowledgedNotifications);
     const isSuperAdmin = auth?.role === "superAdmin";
+    const isHumanResources = auth?.role === "respRRHH";
     const canValidate = allowedKeys.includes("validacion");
     const canRegister = allowedKeys.includes("registro");
     const canDashboard = allowedKeys.includes("dashboard");
@@ -398,6 +451,25 @@ function AppHeader({ active, isDark, onToggleTheme }) {
     const highPriority = validationWork.filter(
       (item) => (item.priority || "").toLowerCase() === "alta",
     );
+
+    if (isHumanResources) {
+      [...absenceRecords]
+        .sort(
+          (left, right) =>
+            Date.parse(right.submittedAt || "") -
+            Date.parse(left.submittedAt || ""),
+        )
+        .slice(0, 5)
+        .forEach((absence) => {
+          const ackKey = `absence:${absence.absenceId || absence.id}`;
+          if (acknowledgedSet.has(ackKey)) return;
+          const notification = buildAdministrativeAbsenceNotification(
+            absence,
+            canDashboard ? "/dashboard" : "/registro-ausencia",
+          );
+          if (notification) items.push(notification);
+        });
+    }
 
     if (canValidate && highPriority.length > 0) {
       items.push({
@@ -470,6 +542,7 @@ function AppHeader({ active, isDark, onToggleTheme }) {
 
     return items.slice(0, 5);
   }, [
+    absenceRecords,
     absenceDrafts,
     acknowledgedNotifications,
     auditEvents,
@@ -489,14 +562,19 @@ function AppHeader({ active, isDark, onToggleTheme }) {
     const updateDrafts = () => {
       setAbsenceDrafts(readDrafts());
     };
+    const updateAbsences = () => {
+      setAbsenceRecords(readAbsences());
+    };
     const updateAuditEvents = () => {
       setAuditEvents(readAuditLog());
     };
     window.addEventListener(MEDICAL_VALIDATIONS_UPDATED_EVENT, updateExtras);
     window.addEventListener(ABSENCE_DRAFTS_UPDATED_EVENT, updateDrafts);
+    window.addEventListener(ABSENCES_UPDATED_EVENT, updateAbsences);
     window.addEventListener(AUDIT_LOG_UPDATED_EVENT, updateAuditEvents);
     window.addEventListener("storage", updateExtras);
     window.addEventListener("storage", updateDrafts);
+    window.addEventListener("storage", updateAbsences);
     window.addEventListener("storage", updateAuditEvents);
     return () => {
       window.removeEventListener(
@@ -507,9 +585,11 @@ function AppHeader({ active, isDark, onToggleTheme }) {
         ABSENCE_DRAFTS_UPDATED_EVENT,
         updateDrafts
       );
+      window.removeEventListener(ABSENCES_UPDATED_EVENT, updateAbsences);
       window.removeEventListener(AUDIT_LOG_UPDATED_EVENT, updateAuditEvents);
       window.removeEventListener("storage", updateExtras);
       window.removeEventListener("storage", updateDrafts);
+      window.removeEventListener("storage", updateAbsences);
       window.removeEventListener("storage", updateAuditEvents);
     };
   }, []);
