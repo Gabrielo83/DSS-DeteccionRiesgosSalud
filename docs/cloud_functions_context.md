@@ -58,10 +58,12 @@ Comportamiento:
 
 - Agrupa certificados validados por empleado y grupo diagnostico.
 - Usa la ventana movil configurada en `parametros_riesgo/global`.
-- Activa una alerta al alcanzar `recurrenciasAlta` o el umbral de riesgo alto.
-- Evalua el riesgo individual sin el bono de recurrencia para no duplicar motivos ni impedir una resolucion posterior.
+- Activa una alerta al alcanzar `recurrenciasAlta` eventos validados de riesgo individual medio o alto, del mismo empleado y grupo diagnostico, dentro de la ventana configurada.
+- Evalua el riesgo individual sin el bono de recurrencia y usa `umbralMedioRiesgo` como minimo para contabilizar cada evento.
+- Un evento aislado de riesgo alto se prioriza en los indicadores de riesgo, pero no genera por si solo una alerta de recurrencia.
 - Mantiene un documento estable por empleado y grupo en `alertas_riesgo`.
 - Actualiza la evidencia sin duplicar alertas y resuelve el documento cuando deja de cumplirse la condicion.
+- `reconstruirAlertasRiesgo` permite reevaluar de forma controlada los datos existentes cuando cambia la version de la regla.
 - Audita activacion, actualizacion y resolucion desde backend.
 - Las reglas permiten lectura clinica y bloquean toda escritura desde clientes.
 

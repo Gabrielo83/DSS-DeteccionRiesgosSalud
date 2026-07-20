@@ -207,7 +207,7 @@ describe('Funcionalidad del Dashboard', () => {
     const alertasCard = screen.getByText('Alertas Activas').closest('article')
     expect(alertasCard).not.toBeNull()
     expect(
-      within(alertasCard || document.body).getAllByText(/1/).length,
+      within(alertasCard || document.body).getAllByText(/^0$/).length,
     ).toBeGreaterThan(0)
   })
 

@@ -31,6 +31,7 @@ La regla fuerte del TFG es:
 
 - 3 eventos del mismo grupo diagnostico.
 - Dentro de una ventana movil de 6 meses.
+- Cada evento contabilizado debe tener riesgo individual medio o alto.
 - Usado como senal preventiva, no como diagnostico clinico.
 
 ## Stack tecnico
@@ -432,7 +433,7 @@ Alertas consolidadas implementadas el 18/07/2026:
 
 - `consolidarAlertasRiesgo` observa cambios en `validaciones_medicas`.
 - Consolida por empleado y grupo diagnostico en una ventana movil configurable.
-- Activa por tres recurrencias configurables o por riesgo alto validado.
+- Activa por tres recurrencias configurables de riesgo individual medio o alto; un certificado aislado de riesgo alto no genera una alerta consolidada.
 - Separa el riesgo individual del bono por recurrencia para evitar alertas residuales incorrectas.
 - Usa un ID estable en `alertas_riesgo`, evitando duplicados.
 - Actualiza evidencia y resuelve automaticamente cuando deja de cumplirse la condicion.

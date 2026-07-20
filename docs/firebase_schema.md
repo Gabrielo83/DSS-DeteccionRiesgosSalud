@@ -172,8 +172,9 @@ sincroniza e hidrata datos contra estas colecciones.
 - tipo (`riesgo_consolidado`)
 - estado (`activa` | `resuelta`)
 - severidad (`alta`)
-- motivos[] (`recurrencia_diagnostica` | `riesgo_alto`)
-- recurrencias, ventanaMeses
+- motivos[] (`recurrencia_diagnostica`)
+- recurrencias, recurrenciasObjetivo, ventanaMeses
+- umbralRiesgoMinimo
 - riesgoMaximo, riesgoIndividualMaximo
 - referencias[]
 - ultimaReferencia, ultimaFecha

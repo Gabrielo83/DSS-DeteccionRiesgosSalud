@@ -54,15 +54,28 @@ export const evaluateConsolidatedAlert = (
     parameters.recurrenciasAlta ?? parameters.highOccurrenceCount,
     3,
   );
-  const highRiskThreshold = numericOrFallback(
-    parameters.umbralAltoRiesgo ?? parameters.highRiskThreshold,
-    7,
+  const minimumRiskThreshold = numericOrFallback(
+    parameters.umbralMedioRiesgo ?? parameters.mediumRiskThreshold,
+    5,
   );
-  const validated = occurrences.filter(isValidated).map((occurrence) => ({
-    ...occurrence,
-    resolvedDate: toDate(resolveOccurrenceDate(occurrence)),
-  }));
-  const dated = validated.filter((occurrence) => occurrence.resolvedDate);
+  const eligible = occurrences
+    .filter(isValidated)
+    .map((occurrence) => ({
+      ...occurrence,
+      resolvedDate: toDate(resolveOccurrenceDate(occurrence)),
+      individualRiskScore: Number(
+        occurrence.riesgoIndividualPuntaje ??
+          occurrence.riesgoPuntaje ??
+          occurrence.risk?.score,
+      ),
+    }))
+    .filter(
+      (occurrence) =>
+        occurrence.resolvedDate &&
+        Number.isFinite(occurrence.individualRiskScore) &&
+        occurrence.individualRiskScore >= minimumRiskThreshold,
+    );
+  const dated = eligible;
   const latestDate = dated.reduce(
     (latest, occurrence) =>
       !latest || occurrence.resolvedDate > latest
@@ -75,7 +88,7 @@ export const evaluateConsolidatedAlert = (
     windowStart.setUTCMonth(windowStart.getUTCMonth() - reviewPeriodMonths);
   }
 
-  const inWindow = validated
+  const inWindow = eligible
     .filter(
       (occurrence) =>
         !latestDate ||
@@ -95,13 +108,7 @@ export const evaluateConsolidatedAlert = (
     .map((occurrence) => Number(occurrence.riesgoPuntaje ?? occurrence.risk?.score))
     .filter(Number.isFinite);
   const individualRiskScores = inWindow
-    .map((occurrence) =>
-      Number(
-        occurrence.riesgoIndividualPuntaje ??
-          occurrence.riesgoPuntaje ??
-          occurrence.risk?.score,
-      ),
-    )
+    .map((occurrence) => occurrence.individualRiskScore)
     .filter(Number.isFinite);
   const maxRiskScore = riskScores.length ? Math.max(...riskScores) : 0;
   const maxIndividualRiskScore = individualRiskScores.length
@@ -111,9 +118,6 @@ export const evaluateConsolidatedAlert = (
 
   if (inWindow.length >= highOccurrenceCount) {
     reasons.push("recurrencia_diagnostica");
-  }
-  if (maxIndividualRiskScore >= highRiskThreshold) {
-    reasons.push("riesgo_alto");
   }
 
   const latestOccurrence = inWindow.at(-1) || null;
@@ -131,6 +135,6 @@ export const evaluateConsolidatedAlert = (
     latestDate: latestDate ? latestDate.toISOString().slice(0, 10) : "",
     reviewPeriodMonths,
     highOccurrenceCount,
-    highRiskThreshold,
+    minimumRiskThreshold,
   };
 };

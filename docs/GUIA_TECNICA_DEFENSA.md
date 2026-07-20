@@ -16,7 +16,7 @@ Puntos clave:
 - El diagnostico lo realiza el profesional medico.
 - El sistema calcula indicadores operativos de riesgo.
 - Las alertas son senales de priorizacion, no conclusiones clinicas.
-- La regla fuerte del TFG es la recurrencia: 3 eventos del mismo grupo diagnostico dentro de una ventana movil de 6 meses.
+- La regla fuerte del TFG es la recurrencia: 3 eventos validados de riesgo individual medio o alto, del mismo grupo diagnostico, dentro de una ventana movil de 6 meses.
 
 ## 2. Stack tecnologico
 
@@ -223,7 +223,7 @@ Datos que consume:
 
 Regla importante:
 
-- La tabla **Empleados con riesgo individual** muestra empleados con 3 eventos del mismo grupo diagnostico dentro de 6 meses.
+- La tabla **Empleados con riesgo individual** muestra empleados con 3 eventos del mismo grupo diagnostico dentro de 6 meses; las alertas consolidadas exigen ademas que los eventos sean de riesgo individual medio o alto.
 
 Como defenderlo:
 
@@ -249,7 +249,7 @@ Funciones relacionadas:
 
 Defensa tecnica:
 
-> No alcanza con que un empleado tenga 3 certificados cualquiera. Deben pertenecer al mismo grupo diagnostico y estar dentro de la ventana movil de 6 meses. Esto evita falsos positivos por ausencias aisladas o no relacionadas.
+> No alcanza con que un empleado tenga 3 certificados cualquiera. Para una alerta consolidada deben estar validados, alcanzar riesgo individual medio o alto, pertenecer al mismo grupo diagnostico y estar dentro de la ventana movil de 6 meses. Esto evita falsos positivos por ausencias aisladas, leves o no relacionadas.
 
 Ejemplo defendible:
 

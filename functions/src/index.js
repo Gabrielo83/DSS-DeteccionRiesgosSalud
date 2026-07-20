@@ -16,7 +16,7 @@ initializeApp();
 
 const db = getFirestore();
 const RISK_ENGINE_VERSION = "risk-engine-v2";
-const ALERT_ENGINE_VERSION = "alert-engine-v1";
+const ALERT_ENGINE_VERSION = "alert-engine-v2";
 
 const requireSuperAdmin = async (request) => {
   const callerUid = request.auth?.uid;
@@ -458,6 +458,8 @@ const alertSignature = (alert = {}) =>
     estado: alert.estado || "",
     motivos: alert.motivos || [],
     recurrencias: Number(alert.recurrencias || 0),
+    recurrenciasObjetivo: Number(alert.recurrenciasObjetivo || 0),
+    umbralRiesgoMinimo: Number(alert.umbralRiesgoMinimo || 0),
     riesgoMaximo: Number(alert.riesgoMaximo || 0),
     riesgoIndividualMaximo: Number(alert.riesgoIndividualMaximo || 0),
     referencias: alert.referencias || [],
@@ -495,6 +497,8 @@ const auditAlertTransition = (
       grupoPatologia: alert.grupoPatologia,
       motivos: alert.motivos,
       recurrencias: alert.recurrencias,
+      recurrenciasObjetivo: alert.recurrenciasObjetivo,
+      umbralRiesgoMinimo: alert.umbralRiesgoMinimo,
       riesgoMaximo: alert.riesgoMaximo,
       riesgoIndividualMaximo: alert.riesgoIndividualMaximo,
       referencias: alert.referencias,
@@ -567,6 +571,8 @@ const consolidateRiskAlert = async (pair, riskConfig, eventId) => {
       severidad: assessment.active ? "alta" : currentAlert?.severidad || "alta",
       motivos: assessment.reasons,
       recurrencias: assessment.occurrenceCount,
+      recurrenciasObjetivo: assessment.highOccurrenceCount,
+      umbralRiesgoMinimo: assessment.minimumRiskThreshold,
       ventanaMeses: assessment.reviewPeriodMonths,
       riesgoMaximo: assessment.maxRiskScore,
       riesgoIndividualMaximo: assessment.maxIndividualRiskScore,
@@ -648,6 +654,60 @@ export const consolidarAlertasRiesgo = onDocumentWritten(
       reference: event.params.reference,
       pairs: uniquePairs.length,
     });
+  },
+);
+
+export const reconstruirAlertasRiesgo = onCall(
+  { region: "us-east1" },
+  async (request) => {
+    const caller = await requireEnabledUser(request);
+    const [validationsSnapshot, alertsSnapshot, riskConfig] = await Promise.all([
+      db.collection("validaciones_medicas").get(),
+      db.collection("alertas_riesgo").get(),
+      loadRiskConfig(),
+    ]);
+    const pairs = [
+      ...validationsSnapshot.docs.map((document) =>
+        resolveAlertPair(document.data()),
+      ),
+      ...alertsSnapshot.docs.map((document) =>
+        resolveAlertPair(document.data()),
+      ),
+    ].filter(Boolean);
+    const uniquePairs = [
+      ...new Map(
+        pairs.map((pair) => [
+          buildAlertId(pair.employeeId, pair.pathologyGroup),
+          pair,
+        ]),
+      ).values(),
+    ];
+    const rebuildId = `rebuild-${Date.now()}`;
+
+    for (const pair of uniquePairs) {
+      await consolidateRiskAlert(pair, riskConfig, rebuildId);
+    }
+
+    const summary = await rebuildAlertSummary();
+    await db.collection("auditoria").add({
+      eventType: "alertas_riesgo_reconstruidas_backend",
+      entityId: "global",
+      user: request.auth?.token?.email || request.auth.uid,
+      role: caller.rol,
+      metadata: {
+        paresEvaluados: uniquePairs.length,
+        totalActivas: summary.totalActivas,
+        version: ALERT_ENGINE_VERSION,
+      },
+      creadoEn: FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      paresEvaluados: uniquePairs.length,
+      totalActivas: summary.totalActivas,
+      version: ALERT_ENGINE_VERSION,
+    };
   },
 );
 

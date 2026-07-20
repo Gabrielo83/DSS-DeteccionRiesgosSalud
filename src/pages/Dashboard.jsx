@@ -6,6 +6,7 @@ import { readValidationQueue } from "../utils/validationStorage.js";
 import { readAllHistory } from "../utils/historyStorage.js";
 import { readEmployees } from "../utils/employeeStorage.js";
 import calculateRiskScore, { mapScoreToRisk } from "../utils/riskUtils.js";
+import { readRiskConfig } from "../utils/riskConfigStorage.js";
 import {
   formatLocalDate,
   getLocalDateTimestamp,
@@ -239,6 +240,10 @@ const countOccurrencesInRollingWindow = (timestamps = []) => {
 };
 
 const buildLocalRiskAlerts = (entries = []) => {
+  const { parameters } = readRiskConfig();
+  const minimumRiskThreshold = Number(parameters.mediumRiskThreshold || 5);
+  const requiredOccurrences = Number(parameters.highOccurrenceCount || 3);
+  const reviewPeriodMonths = Number(parameters.reviewPeriodMonths || 6);
   const groups = new Map();
   entries.forEach((entry) => {
     const status = String(entry.status || "").toLowerCase();
@@ -253,28 +258,48 @@ const buildLocalRiskAlerts = (entries = []) => {
 
   return Array.from(groups.entries()).flatMap(([id, occurrences]) => {
     const dated = occurrences
-      .map((entry) => ({ entry, timestamp: resolveOccurrenceTimestamp(entry) }))
+      .map((entry) => {
+        const individualRisk = calculateRiskScore({
+          absenceType:
+            entry.absenceType || entry.certificateType || entry.type || "",
+          detailedReason:
+            entry.detailedReason || entry.detail || entry.notes || "",
+          pathologyCategory:
+            entry.pathologyCategory || resolvePathologyLabel(entry),
+          durationDays:
+            Number(entry.durationDays) ||
+            diffDaysInclusive(entry.startDate, entry.endDate),
+          occurrenceCount: 1,
+        });
+        return {
+          entry,
+          timestamp: resolveOccurrenceTimestamp(entry),
+          individualRiskScore: individualRisk.score,
+        };
+      })
+      .filter(
+        ({ timestamp, individualRiskScore }) =>
+          Number.isFinite(timestamp) &&
+          Number(individualRiskScore) >= minimumRiskThreshold,
+      )
       .sort((left, right) => left.timestamp - right.timestamp);
     const latestTimestamp = dated.at(-1)?.timestamp;
     if (!Number.isFinite(latestTimestamp)) return [];
     const windowStart = new Date(latestTimestamp);
-    windowStart.setMonth(windowStart.getMonth() - RECURRENCE_WINDOW_MONTHS);
+    windowStart.setMonth(windowStart.getMonth() - reviewPeriodMonths);
     const inWindow = dated.filter(
       ({ timestamp }) =>
         timestamp >= windowStart.getTime() && timestamp <= latestTimestamp,
     );
     const scores = inWindow
-      .map(({ entry }) =>
-        extractScoreValue(entry.riskScoreValue ?? entry.riskScore),
+      .map(
+        ({ entry, individualRiskScore }) =>
+          extractScoreValue(entry.riskScoreValue ?? entry.riskScore) ??
+          individualRiskScore,
       )
       .filter((score) => score != null);
     const maxRiskScore = scores.length ? Math.max(...scores) : 0;
-    const reasons = [];
-    if (inWindow.length >= MIN_RECURRENT_COUNT) {
-      reasons.push("recurrencia_diagnostica");
-    }
-    if (maxRiskScore >= 7) reasons.push("riesgo_alto");
-    if (!reasons.length) return [];
+    if (inWindow.length < requiredOccurrences) return [];
     const latest = inWindow.at(-1)?.entry || {};
     return [{
       id,
@@ -285,9 +310,9 @@ const buildLocalRiskAlerts = (entries = []) => {
       pathologyCategory:
         latest.pathologyCategory || resolvePathologyLabel(latest) || "",
       status: "activa",
-      reasons,
+      reasons: ["recurrencia_diagnostica"],
       occurrenceCount: inWindow.length,
-      windowMonths: RECURRENCE_WINDOW_MONTHS,
+      windowMonths: reviewPeriodMonths,
       maxRiskScore,
       maxIndividualRiskScore: maxRiskScore,
       references: inWindow
