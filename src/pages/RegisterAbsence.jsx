@@ -1173,19 +1173,6 @@ const clearCertificateFile = () => {
         },
       );
       processOperationQueue(undefined, { ownerIds: queueOwnerIds });
-    }
-    if (draftIdToClear) {
-      removeDraft(draftIdToClear);
-      setDrafts(readDrafts());
-      enqueueOperation(
-        "deleteDraft",
-        { draftId: draftIdToClear },
-        {
-          user: auth?.user?.email || currentUserName,
-          entityId: draftIdToClear,
-        },
-      );
-      processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     } else {
       const absenceId = generateAbsenceId();
       const submittedAt = new Date().toISOString();
@@ -1214,6 +1201,19 @@ const clearCertificateFile = () => {
       });
       processOperationQueue(undefined, { ownerIds: queueOwnerIds });
     }
+    if (draftIdToClear) {
+      removeDraft(draftIdToClear);
+      setDrafts(readDrafts());
+      enqueueOperation(
+        "deleteDraft",
+        { draftId: draftIdToClear },
+        {
+          user: auth?.user?.email || currentUserName,
+          entityId: draftIdToClear,
+        },
+      );
+      processOperationQueue(undefined, { ownerIds: queueOwnerIds });
+    }
     resetForm();
     if (result?.reference) {
       setSubmissionFeedback(
@@ -1231,7 +1231,7 @@ const clearCertificateFile = () => {
     }
     setToastState({
       visible: true,
-      message: "Solicitud enviada para revision.",
+      message: "Ausencia registrada correctamente.",
       tone: "bg-emerald-600 text-white",
     });
     setLastUpdatedAt(

@@ -48,6 +48,56 @@ describe("operationQueue offline-first", () => {
     expect(readOperationQueue()).toHaveLength(1);
   });
 
+  it("sincroniza una ausencia general al recuperar la conectividad", async () => {
+    const absence = {
+      absenceId: "AUS-OFFLINE-001",
+      employeeId: "LEG-010",
+      absenceType: "licencia-personal",
+      startDate: "2026-09-01",
+      endDate: "2026-09-03",
+      absenceDays: 3,
+      requiresCertificate: false,
+    };
+    setOnline(false);
+    enqueueOperation(
+      "submitAbsence",
+      { absenceId: absence.absenceId, absence },
+      {
+        id: "op-absence-offline",
+        user: "rrhh@test",
+        entityId: absence.absenceId,
+      },
+    );
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+
+    await processQueue(handler, { ownerIds: ["rrhh@test"] });
+
+    const storedOffline = JSON.parse(
+      window.localStorage.getItem("app_operation_queue") || "[]",
+    );
+    expect(storedOffline).toHaveLength(1);
+    expect(storedOffline[0]).toMatchObject({
+      type: "submitAbsence",
+      entityId: absence.absenceId,
+      status: "pending",
+    });
+    expect(storedOffline[0].payload).toBeUndefined();
+
+    setOnline(true);
+    const result = await processQueue(handler, {
+      ownerIds: ["rrhh@test"],
+    });
+
+    expect(result.processed).toBe(1);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "submitAbsence",
+        payload: { absenceId: absence.absenceId, absence },
+      }),
+    );
+    expect(readOperationQueue()).toEqual([]);
+  });
+
   it("no expone el payload operativo en localStorage", async () => {
     enqueueOperation(
       "submitCertificate",

@@ -524,6 +524,25 @@ Pendiente para cierre:
 - Documentar eventos utiles en Analytics.
 - Confirmar que Performance no genera errores ni ruido en modo desarrollo.
 
+## HU-002: ausencias sin certificado
+
+Implementacion completada en `feature/offline-first`:
+
+- Tipos soportados: vacaciones, permiso especial y licencia personal.
+- Persistencia local mediante el repositorio protegido de ausencias.
+- Persistencia remota en `ausencias/{absenceId}` mediante la operacion idempotente `submitAbsence`.
+- Exclusión deliberada de `validaciones_medicas`, porque no existe una decision clinica pendiente.
+- Cola offline-first con payload cifrado AES-GCM y metadatos visibles no sensibles.
+- Correccion del flujo de borradores: una ausencia general reanudada se registra antes de eliminar el borrador.
+- El dashboard incorpora estas ausencias en dias perdidos y tasa de ausentismo, sin incorporarlas al calculo clinico de riesgo.
+
+Evidencia automatizada:
+
+- Registro local de los tres tipos sin validacion medica.
+- Reanudacion y envio de un borrador general.
+- Permanencia cifrada de `submitAbsence` sin red y sincronizacion al reconectar.
+- Escritura Firebase en `ausencias` sin crear `validaciones_medicas`.
+
 ## Pruebas ejecutadas habitualmente
 
 ```bash

@@ -169,7 +169,45 @@ describe("Funcionalidad de Registro de Ausencias", () => {
     ).toBeInTheDocument();
   });
 
-  it("registra una ausencia general sin crear una validacion medica", async () => {
+  it.each([
+    "vacaciones",
+    "permiso-especial",
+    "licencia-personal",
+  ])(
+    "registra %s sin crear una validacion medica",
+    async (absenceType) => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.type(
+        screen.getByPlaceholderText(/Escribe el nombre del empleado/i),
+        firstEmployee.fullName,
+      );
+      await user.selectOptions(
+        screen.getByTestId("dropdown-absenceType"),
+        absenceType,
+      );
+      await user.type(screen.getByTestId("start-date-input"), "2026-08-03");
+      await user.type(screen.getByTestId("end-date-input"), "2026-08-07");
+      await user.click(
+        screen.getByRole("button", { name: /Enviar para Aprobacion/i }),
+      );
+
+      const absences = JSON.parse(
+        localStorage.getItem("app_absences") || "[]",
+      );
+      expect(absences).toHaveLength(1);
+      expect(absences[0]).toMatchObject({
+        employeeId: firstEmployee.employeeId,
+        absenceType,
+        absenceDays: 5,
+        requiresCertificate: false,
+      });
+      expect(localStorage.getItem("app_medical_validations")).toBeNull();
+    },
+  );
+
+  it("persiste una ausencia general reanudada desde un borrador", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -179,22 +217,30 @@ describe("Funcionalidad de Registro de Ausencias", () => {
     );
     await user.selectOptions(
       screen.getByTestId("dropdown-absenceType"),
-      "vacaciones",
+      "permiso-especial",
     );
-    await user.type(screen.getByTestId("start-date-input"), "2026-08-03");
-    await user.type(screen.getByTestId("end-date-input"), "2026-08-07");
+    await user.type(screen.getByTestId("start-date-input"), "2026-09-14");
+    await user.type(screen.getByTestId("end-date-input"), "2026-09-15");
+    await user.click(screen.getByRole("button", { name: /Guardar Borrador/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Reanudar borrador/i }),
+    );
     await user.click(
       screen.getByRole("button", { name: /Enviar para Aprobacion/i }),
     );
 
     const absences = JSON.parse(localStorage.getItem("app_absences") || "[]");
+    const drafts = JSON.parse(
+      localStorage.getItem("app_absence_drafts") || "[]",
+    );
     expect(absences).toHaveLength(1);
     expect(absences[0]).toMatchObject({
       employeeId: firstEmployee.employeeId,
-      absenceType: "vacaciones",
-      absenceDays: 5,
+      absenceType: "permiso-especial",
+      absenceDays: 2,
       requiresCertificate: false,
     });
+    expect(drafts).toEqual([]);
     expect(localStorage.getItem("app_medical_validations")).toBeNull();
   });
 });

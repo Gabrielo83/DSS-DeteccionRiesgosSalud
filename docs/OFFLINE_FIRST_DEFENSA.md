@@ -90,6 +90,15 @@ await window.sanitizeAdministrativeAbsences()
 
 La Function elimina de los documentos existentes en `ausencias` los campos clinicos heredados y registra el resultado en `auditoria`. Es idempotente: una segunda ejecucion informa cero documentos pendientes de saneamiento.
 
+## HU-002: ausencias sin certificado
+
+- Vacaciones, permisos especiales y licencias personales se guardan en el repositorio operativo de `ausencias`.
+- Estas solicitudes generan una operacion `submitAbsence`; no crean entradas en `validaciones_medicas` ni requieren adjuntos.
+- Un borrador general reanudado se convierte en ausencia antes de eliminarse, evitando perdida de datos.
+- Sin conectividad, el payload queda cifrado en IndexedDB y `localStorage` conserva solamente `payloadRef` y metadatos de sincronizacion.
+- Al recuperarse la red, la misma operacion se escribe de forma idempotente en `ausencias/{absenceId}` y desaparece de la cola tras confirmarse la sincronizacion.
+- La cobertura automatizada verifica los tres tipos, el flujo desde borrador, la reconexion offline y el adaptador Firebase.
+
 ## Limite que debe explicarse
 
 Offline-first no significa que todas las funciones remotas se ejecuten sin internet. El registro y la continuidad operativa se mantienen localmente; autenticacion inicial, Storage, Firestore, Cloud Functions y consolidacion remota se completan al recuperar conectividad. Una sesion Firebase ya restaurada puede usar su perfil en cache, pero un primer acceso en un navegador nuevo requiere red.
