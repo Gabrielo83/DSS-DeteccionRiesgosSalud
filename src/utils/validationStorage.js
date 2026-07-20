@@ -34,7 +34,7 @@ export const readValidationQueue = () => {
   try {
     const raw = window.localStorage.getItem(MEDICAL_VALIDATIONS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    syncFromIndexedDb();
+    if (!raw) syncFromIndexedDb();
     return parsed;
   } catch (error) {
     console.warn("No se pudo leer la cola de validaciones:", error);

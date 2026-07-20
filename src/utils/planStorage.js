@@ -14,7 +14,7 @@ const readRawPlans = () => {
   try {
     const raw = window.localStorage.getItem(PREVENTIVE_PLANS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    syncFromIndexedDb();
+    if (!raw) syncFromIndexedDb();
     return parsed;
   } catch (error) {
     console.warn("No se pudieron leer los planes preventivos:", error);

@@ -14,7 +14,7 @@ const readRawHistory = () => {
   try {
     const raw = window.localStorage.getItem(MEDICAL_HISTORY_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    syncFromIndexedDb();
+    if (!raw) syncFromIndexedDb();
     return parsed;
   } catch (error) {
     console.warn("No se pudo leer el historial medico:", error);

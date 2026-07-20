@@ -19,7 +19,7 @@ const readRawDrafts = () => {
   try {
     const raw = window.localStorage.getItem(ABSENCE_DRAFTS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    syncFromIndexedDb();
+    if (!raw) syncFromIndexedDb();
     return parsed;
   } catch (error) {
     console.warn("No se pudo leer el storage de borradores:", error);

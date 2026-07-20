@@ -153,7 +153,7 @@ const readRawQueue = () => {
   try {
     const raw = window.localStorage.getItem(OPERATION_QUEUE_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    syncFromIndexedDb();
+    if (!raw) syncFromIndexedDb();
     return parsed;
   } catch (error) {
     console.warn("No se pudo leer la cola de operaciones:", error);
