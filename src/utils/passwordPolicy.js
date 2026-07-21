@@ -1,35 +1,7 @@
 import { PASSWORD_LOGIN_ATTEMPTS_STORAGE_KEY } from "./storageKeys.js";
 
-export const PASSWORD_LOCK_MAX_ATTEMPTS = 5;
-export const PASSWORD_LOCK_DURATION_MS = 15 * 60 * 1000;
-
-export const PASSWORD_REQUIREMENTS = [
-  {
-    id: "minLength",
-    label: "8 caracteres o mas",
-    test: (password) => password.length >= 8,
-  },
-  {
-    id: "uppercase",
-    label: "una mayuscula",
-    test: (password) => /[A-Z]/.test(password),
-  },
-  {
-    id: "lowercase",
-    label: "una minuscula",
-    test: (password) => /[a-z]/.test(password),
-  },
-  {
-    id: "number",
-    label: "un numero",
-    test: (password) => /\d/.test(password),
-  },
-  {
-    id: "symbol",
-    label: "un simbolo",
-    test: (password) => /[^A-Za-z0-9]/.test(password),
-  },
-];
+const PASSWORD_LOCK_MAX_ATTEMPTS = 5;
+const PASSWORD_LOCK_DURATION_MS = 15 * 60 * 1000;
 
 const isBrowser = () => typeof window !== "undefined";
 
@@ -51,19 +23,6 @@ const writeAttempts = (attempts) => {
     PASSWORD_LOGIN_ATTEMPTS_STORAGE_KEY,
     JSON.stringify(attempts),
   );
-};
-
-export const validatePasswordPolicy = (password = "") => {
-  const requirements = PASSWORD_REQUIREMENTS.map((requirement) => ({
-    id: requirement.id,
-    label: requirement.label,
-    passed: requirement.test(password),
-  }));
-
-  return {
-    requirements,
-    isValid: requirements.every((requirement) => requirement.passed),
-  };
 };
 
 export const getLoginLockStatus = (email = "", now = Date.now()) => {

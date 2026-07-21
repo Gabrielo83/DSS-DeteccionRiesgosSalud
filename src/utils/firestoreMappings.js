@@ -194,31 +194,3 @@ export const mapEmpleadoToFirestore = (employee) => ({
   fechaBaja:
     employee?.terminationDate || employee?.endDate || employee?.fechaBaja || null,
 });
-
-export const mapUsuarioToFirestore = (user) => ({
-  uid: user?.uid || "",
-  email: user?.email || "",
-  nombreVisible: user?.displayName || user?.fullName || "",
-  rol: user?.role || "",
-});
-
-export const mapPatologiaToFirestore = (pathology) => ({
-  pathologyId: pathology?.pathologyId || pathology?.id || "",
-  nombre: pathology?.name || pathology?.nombre || "",
-  cie10: cleanText(pathology?.cie10 || pathology?.cie10Code),
-  grupo: pathology?.group || pathology?.grupo || "",
-  riesgoBase: toNumber(pathology?.baseRisk ?? pathology?.riesgoBase),
-});
-
-export const mapParametrosRiesgoToFirestore = (config) => ({
-  configId: config?.configId || config?.id || "global",
-  umbralAltoRiesgo: toNumber(
-    config?.highRiskThreshold ?? config?.umbralAltoRiesgo,
-  ),
-  periodoEvaluacionMeses: toNumber(
-    config?.reviewPeriodMonths ?? config?.periodoEvaluacionMeses,
-  ),
-  factorRecurrencia: toNumber(
-    config?.recurrenceFactor ?? config?.factorRecurrencia,
-  ),
-});

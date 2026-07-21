@@ -35,12 +35,4 @@ export const replaceValidationQueue = (entries = []) => {
   persistQueue(safeEntries);
 };
 
-export const removeValidationEntry = (reference) => {
-  if (typeof window === "undefined" || !reference) return;
-  const queue = readValidationQueue();
-  const filtered = queue.filter((item) => item.reference !== reference);
-  if (filtered.length === queue.length) return;
-  persistQueue(filtered);
-};
-
 export const clearValidationCache = () => store.clear();

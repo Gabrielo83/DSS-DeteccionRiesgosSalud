@@ -95,7 +95,7 @@ Implementado:
 - Auditoria registra login exitoso/fallido, usuario sin rol, accesos denegados y expiracion de sesion.
 - Los eventos anteriores a la autenticacion, como credenciales invalidas, se conservan localmente y no intentan escribir anonimamente en Firestore; la evidencia remota de Firebase Auth se consulta en Cloud Logging.
 - Sesion local expira por inactividad luego de 20 minutos.
-- Modulo reutilizable de politica de contrasena para alta o restablecimiento.
+- La complejidad de contrasena se delega a Firebase Authentication / Identity Platform; el frontend no replica esa validacion en el login normal.
 - Bloqueo temporal local luego de 5 intentos fallidos por usuario.
 - Auditoria de bloqueo por intentos reiterados mediante `login_blocked`.
 
@@ -289,6 +289,7 @@ Destinos actuales:
 - `Siguiente sync automatica` ejecuta una cuenta regresiva real de 150 segundos hasta la siguiente hidratacion completa.
 - Este ciclo es un respaldo de consistencia: convive con listeners Firestore en tiempo real y con la cola Offline-First, que procesa cada 15 segundos y al recuperar conectividad.
 - El evento `online` tambien dispara una hidratacion completa inmediata; una ejecucion en curso impide ciclos concurrentes.
+- La hidratacion correcta se audita una sola vez por sesion; los fallos y usos de cache local se registran siempre para evitar ruido y crecimiento innecesario de `auditoria`.
 - En modo local, el mismo intervalo recarga los repositorios del navegador sin modificar el aspecto presentado al tribunal.
 
 Implementado:
@@ -298,7 +299,7 @@ Implementado:
 - Alertas activas.
 - Heatmap por sector.
 - Evolucion del riesgo promedio.
-- Tabla de empleados con riesgo individual.
+- Grupos diagnosticos prevalentes con informacion agregada.
 - Modal por sector con:
   - certificados validados y pendientes
   - ranking preventivo de grupos diagnosticos frecuentes
@@ -561,7 +562,7 @@ Evidencia automatizada:
 - La informacion es agregada: no contiene empleados, diagnosticos detallados, CIE-10 ni documentos medicos.
 - En Firebase, Cloud Functions publica los grupos dentro de `indicadores_riesgo/global`; Gerencia y RR. HH. consumen esa proyeccion sin acceso a `historial_medico`.
 - En modo local, el mismo calculo se realiza sobre el historial validado disponible para conservar la equivalencia funcional.
-- La tabla `Empleados con riesgo individual` se mantiene en codigo detras de una bandera desactivada y deja de mostrarse porque no forma parte de HU-005 ni del prototipo aprobado.
+- La tabla `Empleados con riesgo individual` fue retirada porque no forma parte de HU-005 ni del prototipo aprobado; el detalle autorizado se consulta desde las alertas por sector y los legajos.
 - El panel se ubica debajo del bloque Mapa de calor/Evolucion, por lo que no modifica la primera vista presentada en el TFG.
 - Las tres tarjetas principales conservan su aspecto y abren, mediante clic o teclado, una evolucion agregada de doce meses hasta el periodo seleccionado.
 - El historico de ausentismo presenta tasa, dias perdidos y dias trabajados; el de riesgo presenta promedio y certificados; el de alertas presenta cantidades mensuales agregadas.
@@ -609,12 +610,13 @@ Evidencia automatizada de este cierre:
 
 - ESLint frontend: correcto.
 - Sintaxis/lint de Functions: correcto.
-- Suite frontend: 14 archivos y 84 pruebas correctas.
+- Suite frontend: 13 archivos y 81 pruebas correctas.
 - Suite backend: 15 pruebas correctas, incluida una prueba de volumen con 5.000 registros de historial, 5.000 ausencias y 1.000 empleados.
 - Suite de reglas: 11 pruebas correctas sobre emuladores de Firestore y Storage.
 - Reintento idempotente de una ausencia: la misma operacion conserva los identificadores de `ausencias` y `operations` y no crea documentos duplicados.
 - Builds local y Firebase: correctos; quedan advertencias no bloqueantes por tamano del bundle y datos de navegadores desactualizados.
 - Auditoria npm del frontend/runtime: 0 vulnerabilidades. Cloud Functions conserva 7 avisos moderados transitivos en dependencias oficiales, sin avisos altos ni criticos y sin correccion compatible no disruptiva disponible.
+- Las semillas y utilidades administrativas de consola se cargan solo en desarrollo y quedan excluidas del build productivo.
 
 Documentos de cierre relacionados:
 

@@ -1,22 +1,16 @@
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  orderBy,
   limit,
+  orderBy,
+  query,
+  where,
 } from "firebase/firestore";
 import { getFirebaseServices } from "../services/firebase/firebaseClient.js";
 
 export const COLLECTIONS = {
-  USUARIOS: "usuarios",
   EMPLEADOS: "empleados",
   AUSENCIAS: "ausencias",
   VALIDACIONES: "validaciones_medicas",
@@ -30,12 +24,6 @@ export const COLLECTIONS = {
   INDICADORES_RIESGO: "indicadores_riesgo",
   INDICADORES_AUSENTISMO: "indicadores_ausentismo",
 };
-
-const withTimestamps = (data, includeCreated) => ({
-  ...data,
-  ...(includeCreated ? { creadoEn: serverTimestamp() } : {}),
-  actualizadoEn: serverTimestamp(),
-});
 
 export const getDocById = async (collectionName, id) => {
   const { db } = getFirebaseServices();
@@ -52,40 +40,6 @@ export const listCollection = async (collectionName) => {
     id: docSnap.id,
     ...docSnap.data(),
   }));
-};
-
-export const createDoc = async (collectionName, data) => {
-  const { db } = getFirebaseServices();
-  const payload = withTimestamps(data, true);
-  const ref = await addDoc(collection(db, collectionName), payload);
-  return ref.id;
-};
-
-export const upsertDocById = async (
-  collectionName,
-  id,
-  data,
-  { includeCreated = false, merge = true } = {},
-) => {
-  const { db } = getFirebaseServices();
-  const payload = withTimestamps(data, includeCreated);
-  const ref = doc(db, collectionName, id);
-  await setDoc(ref, payload, { merge });
-  return id;
-};
-
-export const updateDocById = async (collectionName, id, data) => {
-  const { db } = getFirebaseServices();
-  const payload = withTimestamps(data, false);
-  const ref = doc(db, collectionName, id);
-  await updateDoc(ref, payload);
-  return id;
-};
-
-export const deleteDocById = async (collectionName, id) => {
-  const { db } = getFirebaseServices();
-  const ref = doc(db, collectionName, id);
-  await deleteDoc(ref);
 };
 
 export const queryCollection = async (

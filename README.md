@@ -8,7 +8,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 - Registro de ausencias con busqueda de empleados, calculo automatico de dias, borradores, adjuntos con vista previa y envio para revision.
 - Validacion medica con filtros, modal clinico, asignacion de riesgo, planes preventivos, historial y paginacion.
 - Legajos medicos digitales con busqueda, certificados por periodo, carga masiva de historicos y vista previa de documentos.
-- Dashboard operativo con metricas de ausentismo, alertas activas, mapa de calor por sector, tabla de riesgo individual y planes preventivos.
+- Dashboard operativo con metricas de ausentismo, alertas activas, mapa de calor por sector, tendencias y grupos diagnosticos prevalentes.
 - Persistencia en navegador con IndexedDB/localStorage y cola de operaciones para continuidad operativa.
 - Sincronizacion progresiva con Firebase mediante selector de proveedor.
 - Politica de contrasena segura, expiracion de sesion por inactividad y auditoria local de eventos criticos.
@@ -26,7 +26,7 @@ Sistema web para registrar ausencias, validar certificados medicos, administrar 
 
 - superAdmin: acceso completo.
 - medico: validacion, legajos, registro, certificados y dashboard.
-- administrativo: dashboard, registro de ausencias y carga documental.
+- administrativo: dashboard y registro de ausencias administrativas, sin acceso a documentacion clinica.
 - administrativoSalud: dashboard, registro, carga documental y consulta de legajos/certificados historicos sin decision medica.
 - respRRHH: dashboard y registro administrativo de ausencias.
 - gerente: dashboard de indicadores.
@@ -151,13 +151,15 @@ La arquitectura, limites, politica de conflictos y prueba manual se documentan e
 
 ## Proximos pasos
 
-- Completar semillas remotas de empleados/patologias si se desea operar sin datos locales iniciales.
+- Mantener actualizadas las semillas remotas controladas de empleados, patologias y parametros de riesgo.
 - Revisar eventos en Firebase Analytics, Performance y la coleccion `auditoria`.
 - Ajustar reglas productivas finas si se agregan claims custom por rol.
 - Mantener IndexedDB como respaldo offline-first.
-- Mover reglas sensibles y alertas criticas a Cloud Functions como evolucion backend.
+- Monitorear las Cloud Functions que calculan riesgo, recurrencia, alertas e indicadores consolidados.
 
-Si necesitas regenerar datos controlados para presentacion, ejecuta
+Las herramientas de consola para semillas y mantenimiento solo se cargan con
+`npm run dev` o `npm run dev:firebase`; no forman parte del build productivo.
+Para regenerar datos controlados en desarrollo, ejecuta
 `window.runDemoSeed()` en la consola del navegador.
 
 Para cargar la nomina controlada de 80 empleados en Firestore, inicia sesion en

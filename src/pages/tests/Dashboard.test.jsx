@@ -277,7 +277,7 @@ describe('Funcionalidad del Dashboard', () => {
     anchorClick.mockRestore()
   })
 
-  it('oculta la tabla de riesgo individual fuera del alcance de HU-005', () => {
+  it('no presenta una tabla individual fuera del alcance de HU-005', () => {
     renderDashboard()
 
     expect(screen.queryByRole('heading', {
@@ -398,10 +398,10 @@ describe('Funcionalidad del Dashboard', () => {
     expect(screen.queryByRole('link', { name: /Legajos Medicos/i })).toBeNull()
   })
 
-  it('bloquea la ruta de certificados para un administrativo comun', async () => {
+  it('redirige la ruta antigua de certificados al registro de ausencia', async () => {
     renderWithRole('/certificados-medicos', 'administrativo')
 
-    await screen.findByRole('heading', { name: /Panel de Control/i }, { timeout: 8000 })
+    await screen.findByRole('heading', { name: /Registro de Ausencia/i }, { timeout: 8000 })
     expect(screen.queryByRole('heading', { name: /Certificados Medicos/i })).not.toBeInTheDocument()
   }, 10000)
 

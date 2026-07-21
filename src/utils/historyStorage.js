@@ -100,7 +100,7 @@ export const appendEmployeeHistory = (employeeKey, record) => {
   persistHistory(records);
 };
 
-export const mergeHistoryPayload = (payload) => {
+const mergeHistoryPayload = (payload) => {
   if (!payload || typeof payload !== "object") {
     throw new Error("El historial importado debe ser un objeto valido.");
   }

@@ -85,12 +85,14 @@ Frase recomendada:
 
 Firestore utiliza cache en memoria y no conserva automaticamente documentos entre sesiones. La continuidad se implementa mediante la cola cifrada de la aplicacion; al cerrar sesion se limpia la cache clinica hidratada y se preservan unicamente operaciones pendientes vinculadas a su propietario para evitar perdida de trabajo.
 
+La aplicacion combina listeners en tiempo real con una hidratacion periodica de respaldo. El primer exito de hidratacion se registra en auditoria una vez por sesion; los errores se registran siempre.
+
 Rutas principales:
 
 - `/`: login.
 - `/dashboard`: Panel de Control.
 - `/registro-ausencia`: Registro de Ausencia.
-- `/certificados-medicos`: carga simple de certificados.
+- `/certificados-medicos`: ruta antigua que redirige a `/registro-ausencia` para mantener compatibilidad.
 - `/validacion-medica`: validacion profesional.
 - `/legajos-medicos`: historial y legajo del empleado.
 
@@ -211,19 +213,18 @@ Responsabilidad:
 - Mostrar metricas generales.
 - Mapa de calor por sector.
 - Evolucion del riesgo promedio.
-- Tabla de empleados con riesgo individual.
-- Historial y plan preventivo desde el panel.
+- Grupos diagnosticos prevalentes.
+- Detalle agregado y alertas preventivas por sector.
 
 Datos que consume:
 
 - Cola de validaciones.
 - Historial medico.
-- Planes preventivos.
 - Base de empleados.
 
 Regla importante:
 
-- La tabla **Empleados con riesgo individual** permanece desactivada porque no forma parte de HU-005 ni del prototipo aprobado. El dashboard presenta indicadores y prevalencias agregadas; el detalle autorizado de una alerta se consulta desde el sector correspondiente.
+- La tabla **Empleados con riesgo individual** fue retirada porque no forma parte de HU-005 ni del prototipo aprobado. El dashboard presenta indicadores y prevalencias agregadas; el detalle autorizado de una alerta se consulta desde el sector correspondiente.
 
 Como defenderlo:
 
@@ -476,7 +477,6 @@ Archivos:
 - `src/pages/tests/MedicalRecords.test.jsx`
 - `src/pages/tests/MedicalFlow.integration.test.jsx`
 - `src/pages/tests/Login.test.jsx`
-- `src/pages/tests/MedicalCertificate.test.jsx`
 
 Cobertura importante:
 
@@ -486,7 +486,7 @@ Cobertura importante:
 - Validacion medica.
 - Flujo integrado Registro -> Validacion.
 - Legajos actualizados desde storage.
-- Dashboard, heatmap y tabla de riesgo individual.
+- Dashboard, heatmap, tendencias y grupos diagnosticos prevalentes.
 - Recurrencia de 3 eventos del mismo grupo diagnostico.
 
 Comandos:
@@ -605,11 +605,11 @@ Objetivo:
 
 - Entender score.
 - Entender heatmap.
-- Entender tabla de riesgo individual.
+- Entender alertas consolidadas y grupos diagnosticos prevalentes.
 
 Practica:
 
-- Ejecutar `window.runDemoSeed()`.
+- Con el servidor de desarrollo, ejecutar `window.runDemoSeed()`.
 - Explicar por que Produccion aparece con riesgo.
 - Explicar por que un pendiente no es diagnostico.
 
@@ -737,7 +737,7 @@ Con pruebas automatizadas que cubren login, roles, registro, validacion, legajos
 10. Ir al Panel de Control.
 11. Explicar heatmap.
 12. Explicar evolucion de riesgo.
-13. Explicar tabla de empleados con riesgo individual.
+13. Explicar grupos diagnosticos prevalentes y alertas por sector.
 14. Ejecutar seed si hace falta para mostrar recurrencia controlada.
 
 Frase final:
@@ -782,7 +782,7 @@ Antes de la presentacion:
 - Probar Validacion Medica.
 - Probar Legajos.
 - Probar Dashboard.
-- Ejecutar `window.runDemoSeed()` si necesitas datos controlados.
+- Con el servidor de desarrollo, ejecutar `window.runDemoSeed()` si necesitas datos controlados.
 - Tener claro que las alertas no son diagnosticos.
 - Practicar explicar la regla de 3 eventos en 6 meses.
 

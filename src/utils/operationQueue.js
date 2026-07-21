@@ -289,30 +289,6 @@ export const enqueueOperation = (type, payload = {}, meta = {}) => {
   return op;
 };
 
-export const markOperationStatus = (id, status, patch = {}) => {
-  if (!id || !status) return;
-  const queue = readRawQueue();
-  const updated = queue.map((item) =>
-    item.id === id
-      ? {
-          ...item,
-          status,
-          lastAttemptAt: nowIso(),
-          ...patch,
-        }
-      : item,
-  );
-  persistQueue(updated);
-};
-
-export const removeOperation = (id) => {
-  if (!id) return;
-  const queue = readRawQueue();
-  const filtered = queue.filter((item) => item.id !== id);
-  if (filtered.length === queue.length) return;
-  persistQueue(filtered);
-};
-
 const defaultHandler = async (operation) => {
   if (operation) {
     return syncOperation(operation);

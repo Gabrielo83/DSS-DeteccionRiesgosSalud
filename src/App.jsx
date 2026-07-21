@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import Dashboard from "./pages/Dashboard.jsx";
 import Login from "./pages/Login.jsx";
 import RegisterAbsence from "./pages/RegisterAbsence.jsx";
-import MedicalCertificate from "./pages/MedicalCertificate.jsx";
 import MedicalValidation from "./pages/MedicalValidation.jsx";
 import MedicalRecords from "./pages/MedicalRecords.jsx";
 import AuthContext from "./context/AuthContext.jsx";
@@ -20,10 +19,10 @@ const SESSION_TIMEOUT_MS = 20 * 60 * 1000;
 const SESSION_LAST_ACTIVITY_KEY = "sessionLastActivityAt";
 
 const ROLE_PERMISSIONS = {
-  superAdmin: ["dashboard", "registro", "certificados", "validacion", "legajos"],
-  medico: ["dashboard", "registro", "certificados", "validacion", "legajos"],
+  superAdmin: ["dashboard", "registro", "validacion", "legajos"],
+  medico: ["dashboard", "registro", "validacion", "legajos"],
   administrativo: ["dashboard", "registro"],
-  administrativoSalud: ["dashboard", "registro", "certificados", "legajos"],
+  administrativoSalud: ["dashboard", "registro", "legajos"],
   gerente: ["dashboard"],
   respRRHH: ["dashboard", "registro"],
 };
@@ -44,7 +43,6 @@ const ROUTE_ACCESS = {
     "administrativoSalud",
     "respRRHH",
   ],
-  certificados: ["superAdmin", "medico", "administrativoSalud"],
   validacion: ["superAdmin", "medico"],
   legajos: ["superAdmin", "medico", "administrativoSalud"],
 };
@@ -189,14 +187,27 @@ function App() {
     let unsubscribeRealtime;
     let hydrationTimeoutId;
     let hydrating = false;
+    let hydrationSuccessAudited = false;
+    const hydrationModule = import(
+      "./services/firebase/firestoreHydration.js"
+    );
     const hydrate = () => {
       if (cancelled || hydrating) return;
       window.clearTimeout(hydrationTimeoutId);
       hydrating = true;
-      import("./services/firebase/firestoreHydration.js")
+      hydrationModule
         .then(({ hydrateFirebaseData }) =>
-          hydrateFirebaseData({ user: currentUser, role: userRole }),
+          hydrateFirebaseData({
+            user: currentUser,
+            role: userRole,
+            auditSuccess: !hydrationSuccessAudited,
+          }),
         )
+        .then((result) => {
+          if (!result?.failedCollections?.length) {
+            hydrationSuccessAudited = true;
+          }
+        })
         .catch((error) => {
           if (cancelled) return;
           appendAuditLog("firebase_hydration_failed", {
@@ -218,7 +229,7 @@ function App() {
     const onlineHandler = () => hydrate();
     hydrate();
     window.addEventListener("online", onlineHandler);
-    import("./services/firebase/firestoreHydration.js")
+    hydrationModule
       .then(({ startFirebaseRealtimeSync }) => {
         if (cancelled) return;
         unsubscribeRealtime = startFirebaseRealtimeSync({
@@ -358,7 +369,7 @@ function App() {
         />
         <Route
           path="/certificados-medicos"
-          element={renderProtected(MedicalCertificate, "certificados")}
+          element={<Navigate to="/registro-ausencia" replace />}
         />
         <Route
           path="/validacion-medica"

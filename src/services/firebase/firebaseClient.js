@@ -35,10 +35,10 @@ const getFirebaseDb = (app) => {
   return firestoreDb;
 };
 
-export const getMissingFirebaseConfig = () =>
+const getMissingFirebaseConfig = () =>
   requiredKeys.filter((key) => !firebaseConfig[key]);
 
-export const assertFirebaseConfig = () => {
+const assertFirebaseConfig = () => {
   const missing = getMissingFirebaseConfig();
   if (missing.length) {
     throw new Error(
@@ -61,13 +61,6 @@ export const getFirebaseServices = () => {
     storage: getStorage(app),
   };
 };
-
-export const getFirebaseOfflineConfig = () => ({
-  trustedDevice: false,
-  cache: "memory",
-  tabMode: "none",
-  operationalQueue: "encrypted-indexeddb",
-});
 
 export const getFirebaseAnalytics = async () => {
   const app = getFirebaseApp();

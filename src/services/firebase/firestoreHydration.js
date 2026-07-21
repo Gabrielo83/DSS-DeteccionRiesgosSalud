@@ -326,7 +326,11 @@ const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
   }
 };
 
-export const hydrateFirebaseData = async ({ user, role } = {}) => {
+export const hydrateFirebaseData = async ({
+  user,
+  role,
+  auditSuccess = true,
+} = {}) => {
   const clinicalRoles = ["superAdmin", "medico", "administrativoSalud"];
   const canReadClinical = clinicalRoles.includes(role);
   const operationalRoles = [
@@ -601,31 +605,33 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     .filter(([, result]) => !result.ok)
     .map(([collectionName]) => collectionName);
 
-  appendAuditLog(
-    failedCollections.length
-      ? "firebase_hydration_local_fallback"
-      : "firebase_hydration_success",
-    {
-    user: user?.email,
-    role,
-    metadata: {
-      empleados: empleados.length,
-      patologias: patologias.length,
-      parametrosRiesgo: parametrosRiesgo ? 1 : 0,
-      ausencias: ausencias.length,
-      validaciones: validaciones.length,
-      historial: historial.length,
-      borradores: borradores.length,
-      planes: planes.length,
-      alertas: alertas.length,
-      indicadorAlertas: indicadorAlertas ? 1 : 0,
-      indicadorRiesgo: indicadorRiesgo ? 1 : 0,
-      indicadorAusentismo: indicadorAusentismo ? 1 : 0,
-      preservoCacheLocal: failedCollections.length > 0,
-      coleccionesNoDisponibles: failedCollections,
-    },
-    },
-  );
+  if (failedCollections.length || auditSuccess) {
+    appendAuditLog(
+      failedCollections.length
+        ? "firebase_hydration_local_fallback"
+        : "firebase_hydration_success",
+      {
+        user: user?.email,
+        role,
+        metadata: {
+          empleados: empleados.length,
+          patologias: patologias.length,
+          parametrosRiesgo: parametrosRiesgo ? 1 : 0,
+          ausencias: ausencias.length,
+          validaciones: validaciones.length,
+          historial: historial.length,
+          borradores: borradores.length,
+          planes: planes.length,
+          alertas: alertas.length,
+          indicadorAlertas: indicadorAlertas ? 1 : 0,
+          indicadorRiesgo: indicadorRiesgo ? 1 : 0,
+          indicadorAusentismo: indicadorAusentismo ? 1 : 0,
+          preservoCacheLocal: failedCollections.length > 0,
+          coleccionesNoDisponibles: failedCollections,
+        },
+      },
+    );
+  }
 
   if (!failedCollections.length) {
     recordDashboardSyncSuccess();

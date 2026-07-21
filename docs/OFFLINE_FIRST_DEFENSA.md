@@ -88,6 +88,9 @@ Despues de desplegar Functions, iniciar sesion como `superAdmin` y ejecutar una 
 await window.sanitizeAdministrativeAbsences()
 ```
 
+Esta utilidad de mantenimiento solo se expone en la consola cuando la aplicacion
+se ejecuta con el servidor de desarrollo; no forma parte del build productivo.
+
 La Function elimina de los documentos existentes en `ausencias` los campos clinicos heredados y registra el resultado en `auditoria`. Es idempotente: una segunda ejecucion informa cero documentos pendientes de saneamiento.
 
 ## HU-002: ausencias sin certificado

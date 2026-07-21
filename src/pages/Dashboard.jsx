@@ -19,17 +19,11 @@ import {
   MEDICAL_HISTORY_UPDATED_EVENT,
   MEDICAL_VALIDATIONS_UPDATED_EVENT,
   EMPLOYEES_UPDATED_EVENT,
-  PREVENTIVE_PLANS_UPDATED_EVENT,
   RISK_CONFIG_UPDATED_EVENT,
   RISK_ALERTS_UPDATED_EVENT,
   RISK_INDICATOR_UPDATED_EVENT,
   ABSENCE_INDICATOR_UPDATED_EVENT,
 } from "../utils/storageKeys.js";
-import { readAllPlans } from "../utils/planStorage.js";
-import {
-  generatePreventivePlanTemplate,
-  shapePlanForDisplay,
-} from "../utils/preventivePlan.js";
 import {
   readRiskAlerts,
   readRiskAlertSummary,
@@ -45,24 +39,16 @@ import {
   recordDashboardSyncSuccess,
 } from "../utils/syncStatus.js";
 
-const levelToneMap = {
-  Alta: "bg-rose-100 text-rose-700",
-  Media: "bg-amber-100 text-amber-700",
-  Baja: "bg-emerald-100 text-emerald-700",
-};
-
 const pathologyCategoryMap = new Map(
   pathologyCategories.map((item) => [item.value, item.label]),
 );
 
-const buildEmployeeIndexes = (employees = []) => {
+const buildEmployeeIndex = (employees = []) => {
   const byId = new Map();
-  const byName = new Map();
   employees.forEach((employee) => {
     if (employee.employeeId) byId.set(employee.employeeId, employee);
-    if (employee.fullName) byName.set(employee.fullName.toLowerCase(), employee);
   });
-  return { byId, byName };
+  return byId;
 };
 
 const normalizeText = (value = "") =>
@@ -85,9 +71,7 @@ const extractScoreValue = (input) => {
 };
 
 const MIN_RECURRENT_COUNT = 3;
-const RECURRENCE_WINDOW_MONTHS = 6;
 const PREVALENCE_WINDOW_MONTHS = 3;
-const SHOW_INDIVIDUAL_RISK_TABLE = false;
 const PREVALENCE_ROLES = new Set([
   "superAdmin",
   "medico",
@@ -241,19 +225,6 @@ const normalizeCertificateReference = (value = "") => {
   return String(value);
 };
 
-const countOccurrencesInRollingWindow = (timestamps = []) => {
-  const valid = timestamps
-    .filter((timestamp) => Number.isFinite(timestamp))
-    .sort((a, b) => a - b);
-  if (!valid.length) return 0;
-  const latest = valid[valid.length - 1];
-  const windowStart = new Date(latest);
-  windowStart.setMonth(windowStart.getMonth() - RECURRENCE_WINDOW_MONTHS);
-  return valid.filter(
-    (timestamp) => timestamp >= windowStart.getTime() && timestamp <= latest,
-  ).length;
-};
-
 const buildLocalRiskAlerts = (entries = []) => {
   const { parameters } = readRiskConfig();
   const minimumRiskThreshold = Number(parameters.mediumRiskThreshold || 5);
@@ -393,11 +364,6 @@ function Dashboard({ isDark, onToggleTheme }) {
     firebaseMode ? readLastDashboardSync("firebase") : new Date(),
   );
   const [countdownLabel, setCountdownLabel] = useState("02:30");
-  const [historyModal, setHistoryModal] = useState({
-    isOpen: false,
-    employee: "",
-    records: [],
-  });
   const [heatmapModal, setHeatmapModal] = useState({
     isOpen: false,
     sector: "",
@@ -414,18 +380,8 @@ function Dashboard({ isDark, onToggleTheme }) {
     isOpen: false,
     metricKey: "absenceRate",
   });
-  const [planModal, setPlanModal] = useState({
-    isOpen: false,
-    employee: "",
-    plan: null,
-    employeeKey: "",
-    planSource: "auto",
-  });
-  const [planStore, setPlanStore] = useState(() =>
-    typeof window === "undefined" ? {} : readAllPlans(),
-  );
-  const { byId: employeeIndexById, byName: employeeIndexByName } = useMemo(
-    () => buildEmployeeIndexes(employees),
+  const employeeIndexById = useMemo(
+    () => buildEmployeeIndex(employees),
     [employees],
   );
   const periodRange = useMemo(() => {
@@ -1578,22 +1534,6 @@ function Dashboard({ isDark, onToggleTheme }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const syncPlans = () => {
-      setPlanStore(readAllPlans());
-    };
-    window.addEventListener(PREVENTIVE_PLANS_UPDATED_EVENT, syncPlans);
-    window.addEventListener("storage", syncPlans);
-    return () => {
-      window.removeEventListener(
-        PREVENTIVE_PLANS_UPDATED_EVENT,
-        syncPlans,
-      );
-      window.removeEventListener("storage", syncPlans);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
     const updateCountdown = () => {
       if (!lastRefresh) return;
       const now = Date.now();
@@ -1616,313 +1556,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     };
   }, [lastRefresh]);
 
-  const dynamicEmployees = useMemo(() => {
-    const buckets = new Map(); // employee -> Map(pathology -> info)
-
-    const registerOccurrence = (payload = {}, options = {}) => {
-      const { isCountable = true } = options;
-      const pathologyLabel = resolvePathologyLabel(payload);
-      if (!pathologyLabel) return;
-
-      const baseInfo =
-        (payload.employeeId && employeeIndexById.get(payload.employeeId)) ||
-        (payload.employee
-          ? employeeIndexByName.get(payload.employee.toLowerCase())
-          : null);
-      const displayName =
-        payload.employee ||
-        baseInfo?.fullName ||
-        (payload.employeeId ? `Colaborador ${payload.employeeId}` : null);
-      if (!displayName) return;
-
-      const employeeKey = payload.employeeId || displayName;
-      const legajoLabel = payload.employeeId
-        ? `Legajo ${payload.employeeId}`
-        : baseInfo?.employeeId
-          ? `Legajo ${baseInfo.employeeId}`
-          : payload.reference
-            ? `Ref ${payload.reference}`
-            : "Sin identificacion";
-      const updatedAt = resolveOccurrenceTimestamp(payload);
-      const manualScore =
-        extractScoreValue(payload.riskScoreValue) ??
-        extractScoreValue(payload.riskScore);
-      const riskSource =
-        manualScore != null
-          ? mapScoreToRisk(manualScore)
-          : calculateRiskScore({
-              absenceType:
-                payload.absenceType ||
-                payload.certificateType ||
-                payload.title ||
-                "",
-              detailedReason:
-                payload.detailedReason ||
-                payload.detail ||
-                payload.notes ||
-                "",
-              pathologyCategory: payload.pathologyCategory,
-              durationDays:
-                payload.absenceDays ||
-                payload.days ||
-                diffDaysInclusive(payload.startDate, payload.endDate),
-            });
-
-      if (!buckets.has(employeeKey)) {
-        buckets.set(employeeKey, new Map());
-      }
-      const employeeBucket = buckets.get(employeeKey);
-      const existing = employeeBucket.get(pathologyLabel) || {
-        count: 0,
-        latest: 0,
-        scoreValue: 0,
-        display: null,
-        occurrences: [],
-      };
-
-      const occurrences = isCountable
-        ? [...existing.occurrences, updatedAt]
-        : existing.occurrences;
-      const next = {
-        count: occurrences.length,
-        latest: Math.max(existing.latest, updatedAt),
-        scoreValue: Math.max(existing.scoreValue, riskSource.score),
-        occurrences,
-        display: {
-          key: `${employeeKey}-${pathologyLabel}`,
-          employeeKey,
-          name: displayName,
-          dni: legajoLabel,
-          sector: payload.sector || baseInfo?.sector || "Sin sector",
-          pathology: pathologyLabel,
-          riskScore: `${riskSource.score.toFixed(1)} / 10`,
-          level: riskSource.level,
-          levelTone: levelToneMap[riskSource.level] || "bg-slate-200 text-slate-700",
-          riskHistory: "Ver historial",
-          actions: ["Plan Preventivo", "Intervencion"],
-          plan: planStore[employeeKey] || null,
-          updatedAt,
-        },
-      };
-
-      employeeBucket.set(pathologyLabel, next);
-    };
-
-    validationQueue.forEach((entry) => {
-      registerOccurrence(
-        {
-          employeeId: entry.employeeId,
-          employee: entry.employee,
-          sector: entry.sector,
-          detailedReason: entry.detailedReason,
-          pathologyCategory: entry.pathologyCategory,
-          absenceType: entry.absenceType,
-          certificateType: entry.certificateType,
-          detail: entry.notes,
-          reference: entry.reference,
-          startDate: entry.startDate,
-          issueDate: entry.issueDate,
-          validityDate: entry.validityDate,
-          updatedAt: entry.lastDecisionAt || entry.submitted,
-          riskScoreValue: entry.riskScoreValue,
-          riskScore: entry.riskScore,
-        },
-        { isCountable: true },
-      );
-    });
-
-    Object.entries(historySnapshot || {}).forEach(([employeeId, records]) => {
-      if (!Array.isArray(records)) return;
-      records.forEach((record) => {
-        registerOccurrence({
-          employeeId,
-          employee: employeeIndexById.get(employeeId)?.fullName || record.employee,
-          sector: employeeIndexById.get(employeeId)?.sector,
-          certificateType: record.title,
-          pathologyCategory: record.pathologyCategory,
-          detail: record.notes,
-          detailedReason: record.detailedReason,
-          reference: record.id,
-          startDate: record.startDate,
-          issueDate: record.issueDate,
-          validityDate: record.validityDate,
-          updatedAt: record.issued,
-          riskScoreValue: record.riskScore,
-          riskScore: record.riskScore,
-          planActions: record.planActions,
-          planFollowUps: record.planFollowUps,
-          planRecommendations: record.planRecommendations,
-        });
-      });
-    });
-
-    const candidates = [];
-    buckets.forEach((pathologies) => {
-      let bestInfo = null;
-      pathologies.forEach((info) => {
-        if (!info?.display) return;
-        const recurrentCount = countOccurrencesInRollingWindow(
-          info.occurrences,
-        );
-        if (recurrentCount < MIN_RECURRENT_COUNT) return;
-        const comparableInfo = { ...info, recurrentCount };
-        if (!bestInfo) {
-          bestInfo = comparableInfo;
-          return;
-        }
-        if (comparableInfo.recurrentCount > bestInfo.recurrentCount) {
-          bestInfo = comparableInfo;
-          return;
-        }
-        if (
-          comparableInfo.recurrentCount === bestInfo.recurrentCount &&
-          comparableInfo.scoreValue > bestInfo.scoreValue
-        ) {
-          bestInfo = comparableInfo;
-        }
-      });
-      if (bestInfo?.display) {
-        candidates.push({
-          ...bestInfo.display,
-          count: bestInfo.recurrentCount,
-          scoreValue: bestInfo.scoreValue,
-        });
-      }
-    });
-
-    return candidates.sort(
-      (a, b) => b.scoreValue - a.scoreValue || b.updatedAt - a.updatedAt,
-    );
-  }, [
-    employeeIndexById,
-    employeeIndexByName,
-    validationQueue,
-    historySnapshot,
-    planStore,
-  ]);
-
-  const employeesToDisplay = dynamicEmployees.map((employee) => ({
-    ...employee,
-    plan: employee.plan || planStore[employee.employeeKey] || null,
-  }));
-  const hasEmployees = employeesToDisplay.length > 0;
   const formattedLastRefresh = formatDateTimeLabel(lastRefresh);
-
-  const openHistoryModal = (employee) => {
-    const employeeKey =
-      employee.employeeKey ||
-      employee.employeeId ||
-      employee.name ||
-      employee.dni;
-    const normalizedKey = employeeKey || employee.name;
-    const validatedRecords = historySnapshot[normalizedKey] ?? [];
-    const pendingRecords = validationQueue.filter((item) =>
-      entryBelongsToEmployee(item, employee, normalizedKey),
-    );
-
-    const normalizedHistory = validatedRecords.map((record) => ({
-      id: record.id || `${record.title}-${record.issued || Date.now()}`,
-      title: record.title || record.certificateType || "Certificado medico",
-      status: record.status || "Validado",
-      issued: formatDateValue(record.issued),
-      notes: record.notes || "Sin observaciones",
-      institution: record.institution || "No indicado",
-      riskLabel: record.riskLevel
-        ? `${record.riskLevel} (${Number(record.riskScore).toFixed?.(1) ?? record.riskScore})`
-        : null,
-    }));
-
-    const normalizedPending = pendingRecords.map((record) => ({
-      id: record.reference || `PENDING-${record.employee}`,
-      title: record.certificateType || record.absenceType || "Certificado pendiente",
-      status: record.status || "En Revision",
-      issued: formatDateValue(record.submitted || record.issueDate),
-      notes:
-        record.notes ||
-        record.detailedReason ||
-        "Sin observaciones adicionales.",
-      institution: record.institution || "No indicado",
-      riskLabel: record.riskLevel
-        ? `${record.riskLevel} (${Number(record.riskScoreValue).toFixed?.(1) ?? record.riskScoreValue})`
-        : null,
-    }));
-
-    const recordMap = new Map();
-    const registerRecord = (entry, allowOverride = false) => {
-      if (!entry) return;
-      const key =
-        entry.id ||
-        entry.reference ||
-        `${entry.title || "registro"}-${entry.issued || Date.now()}`;
-      if (!key) return;
-      if (!recordMap.has(key) || allowOverride) {
-        recordMap.set(key, entry);
-      }
-    };
-
-    normalizedPending.forEach((entry) => registerRecord(entry, true));
-    normalizedHistory.forEach((entry) => {
-      const key =
-        entry.id ||
-        entry.reference ||
-        `${entry.title || "registro"}-${entry.issued || Date.now()}`;
-      if (!recordMap.has(key)) {
-        recordMap.set(key, entry);
-      }
-    });
-
-    const combined = Array.from(recordMap.values());
-    setHistoryModal({
-      isOpen: true,
-      employee: employee.name,
-      records: combined.length
-        ? combined
-        : [
-            {
-              id: "empty",
-              title: "Sin registros",
-              status: "N/A",
-              issued: "--",
-              notes: "Todavia no se registraron certificados para este colaborador.",
-              institution: "",
-              riskLabel: null,
-            },
-          ],
-    });
-  };
-
-  const closeHistoryModal = () =>
-    setHistoryModal({ isOpen: false, employee: "", records: [] });
-
-  const openPlanModal = (employee) => {
-    const employeeKey =
-      employee.employeeKey ||
-      employee.employeeId ||
-      employee.name ||
-      employee.dni;
-    const storedPlan =
-      (employeeKey && planStore[employeeKey]) ||
-      (employee.employeeId && planStore[employee.employeeId]) ||
-      employee.plan ||
-      null;
-    const fallbackPlan = generatePreventivePlanTemplate(employee.level);
-    setPlanModal({
-      isOpen: true,
-      employee: employee.name,
-      employeeKey: employeeKey || "",
-      plan: shapePlanForDisplay(storedPlan || fallbackPlan),
-      planSource: storedPlan ? "custom" : "auto",
-    });
-  };
-
-  const closePlanModal = () =>
-    setPlanModal({
-      isOpen: false,
-      employee: "",
-      employeeKey: "",
-      plan: null,
-      planSource: "auto",
-    });
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-100 via-blue-100 to-slate-200 transition dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
       <AppHeader
@@ -2329,121 +1963,6 @@ function Dashboard({ isDark, onToggleTheme }) {
           </section>
         ) : null}
 
-        {SHOW_INDIVIDUAL_RISK_TABLE ? (
-        <section>
-          <article className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Empleados con riesgo individual
-                </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Lista detallada de empleados ordenada por puntuacion de riesgo
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <button
-                  type="button"
-                  className="rounded-full border border-slate-200 px-3 py-1 font-semibold transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600"
-                >
-                  Exportar CSV
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full border border-slate-200 px-3 py-1 font-semibold transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600"
-                >
-                  Ver filtros
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-800">
-              <table className="min-w-full divide-y divide-slate-100 text-left text-sm dark:divide-slate-800">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Nombre</th>
-                    <th className="px-4 py-3">Sector</th>
-                    <th className="px-4 py-3">Patologia mas recurrente</th>
-                    <th className="px-4 py-3">Puntuacion de riesgo</th>
-                    <th className="px-4 py-3">Nivel</th>
-                    <th className="px-4 py-3">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white text-xs text-slate-600 dark:divide-slate-800 dark:bg-transparent dark:text-slate-300">
-                  {hasEmployees ? (
-                    employeesToDisplay.map((employee) => (
-                      <tr key={employee.name}>
-                        <td className="px-4 py-4">
-                          <p className="font-semibold text-slate-900 dark:text-white">
-                            {employee.name}
-                          </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {employee.dni}
-                          </p>
-                        </td>
-                        <td className="px-4 py-4">{employee.sector}</td>
-                        <td className="px-4 py-4">{employee.pathology}</td>
-                        <td className="px-4 py-4 font-semibold text-slate-900 dark:text-white">
-                          {employee.riskScore}
-                        </td>
-                        <td className="px-4 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-[11px] font-semibold ${employee.levelTone}`}
-                          >
-                            {employee.level}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openHistoryModal(employee)}
-                            className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
-                          >
-                            {employee.riskHistory || "Historial"}
-                          </button>
-                          {employee.actions.map((action) => (
-                            <button
-                              type="button"
-                              key={action}
-                              onClick={
-                                action === "Plan Preventivo"
-                                  ? () => openPlanModal(employee)
-                                  : undefined
-                              }
-                              className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
-                                action === "Intervencion"
-                                  ? "bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-400"
-                                  : action === "Plan Preventivo"
-                                    ? "border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
-                                    : "border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300"
-                              }`}
-                            >
-                              {action}
-                            </button>
-                          ))}
-                        </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400"
-                      >
-                        Aun no hay empleados con riesgo individual registrado.
-                        Registra ausencias para actualizar este panel.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-        ) : null}
-
         <section className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             Criterios de puntuacion de riesgo
@@ -2731,213 +2250,8 @@ function Dashboard({ isDark, onToggleTheme }) {
         </div>
       ) : null}
 
-      {historyModal.isOpen ? (
-        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/70 px-4 py-8">
-          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-950">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Historial de certificados
-                </p>
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                  {historyModal.employee}
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Registros validados y pendientes del colaborador.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeHistoryModal}
-                className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300"
-                aria-label="Cerrar historial"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="h-4 w-4"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.22 5.22a.75.75 0 0 1 1.06 0L10 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06L11.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06L10 11.06l-3.72 3.72a.75.75 0 1 1-1.06-1.06L8.94 10 5.22 6.28a.75.75 0 0 1 0-1.06Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="mt-6 space-y-4">
-              {historyModal.records.map((record) => (
-                <div
-                  key={record.id}
-                  className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-5 text-sm shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-base font-semibold text-slate-900 dark:text-white">
-                        {record.title}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Registrado: {record.issued}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow dark:bg-slate-800 dark:text-slate-200">
-                      {record.status}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-slate-600 dark:text-slate-300">
-                    {record.notes}
-                  </p>
-                  <div className="mt-4 grid gap-3 text-xs text-slate-500 dark:text-slate-400 sm:grid-cols-3">
-                    <div>
-                      <p className="font-semibold uppercase tracking-wide">
-                        Institucion
-                      </p>
-                      <p className="text-slate-700 dark:text-slate-200">
-                        {record.institution || "No indicado"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold uppercase tracking-wide">
-                        Riesgo
-                      </p>
-                      {record.riskLabel ? (
-                        <p className="text-slate-700 dark:text-slate-200">
-                          {record.riskLabel}
-                        </p>
-                      ) : (
-                        <p className="text-slate-400">Sin asignar</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-semibold uppercase tracking-wide">
-                        Referencia
-                      </p>
-                      <p className="text-slate-700 dark:text-slate-200">
-                        {record.id}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {planModal.isOpen && planModal.plan ? (
-        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-950">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {planModal.planSource === "custom"
-                    ? "Plan preventivo registrado"
-                    : "Plan preventivo sugerido"}
-                </p>
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                  {planModal.employee}
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {planModal.planSource === "custom"
-                    ? "Plan definido por el profesional tratante."
-                    : "Plantilla automatica basada en el nivel de riesgo."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closePlanModal}
-                className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300"
-                aria-label="Cerrar plan preventivo"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="h-4 w-4"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.22 5.22a.75.75 0 0 1 1.06 0L10 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06L11.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06L10 11.06l-3.72 3.72a.75.75 0 1 1-1.06-1.06L8.94 10 5.22 6.28a.75.75 0 0 1 0-1.06Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="mt-6 space-y-4 text-sm text-slate-600 dark:text-slate-300">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Acciones inmediatas
-                </p>
-                <ul className="mt-3 space-y-3">
-                  {planModal.plan.baseActions.map((action) => (
-                    <li
-                      key={action.title}
-                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-                    >
-                      <p className="font-semibold text-slate-900 dark:text-white">
-                        {action.title}
-                      </p>
-                      <p>{action.description}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Responsable: {action.owner} · Plazo: {action.due}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900/70">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Seguimientos programados
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  {planModal.plan.followUps.map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300"
-                    >
-                      <p className="text-base text-slate-900 dark:text-white">
-                        {item.date}
-                      </p>
-                      <p>{item.label}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900/70">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Recomendaciones del medico
-                </p>
-                <ul className="mt-3 space-y-2">
-                  {planModal.plan.recommendations.map((note, index) => (
-                    <li
-                      key={note}
-                      className="flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:bg-slate-900/60 dark:text-slate-300"
-                    >
-                      <span className="mt-0.5 h-2 w-2 rounded-full bg-rose-500" />
-                      <span>
-                        #{index + 1} · {note}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
 
 export default Dashboard;
-const entryBelongsToEmployee = (entry, employee, normalizedKey) => {
-  const lowerName = (employee.name || "").toLowerCase();
-  const entryName = (entry.employee || "").toLowerCase();
-  return (
-    entry.employeeId === employee.employeeKey ||
-    entry.employeeId === normalizedKey ||
-    entry.employeeId === employee.employeeId ||
-    entryName === lowerName ||
-    entryName === normalizedKey?.toLowerCase()
-  );
-};

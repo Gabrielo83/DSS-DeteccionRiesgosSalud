@@ -74,16 +74,6 @@ export const deleteEntity = async (storeName, key) =>
       )
     : Promise.resolve();
 
-export const readAllEntities = async (storeName) =>
-  hasIndexedDb
-    ? withTx(storeName, "readonly", (store) => store.getAll()).catch(
-        (error) => {
-          console.warn(`IDB readAll failed (${storeName}):`, error);
-          return [];
-        },
-      )
-    : Promise.resolve([]);
-
 export const deleteEntitiesByKeyPrefix = async (storeName, prefix) => {
   if (!hasIndexedDb || !prefix) return;
   return withTx(storeName, "readwrite", (store) => {
