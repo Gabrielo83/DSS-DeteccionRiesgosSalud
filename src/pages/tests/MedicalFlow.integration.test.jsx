@@ -5,6 +5,7 @@ import RegisterAbsence from "../RegisterAbsence.jsx";
 import MedicalValidation from "../MedicalValidation.jsx";
 import { mockEmployees } from "../../data/mockEmployees.js";
 import { MEDICAL_VALIDATIONS_STORAGE_KEY } from "../../utils/storageKeys.js";
+import AuthContext from "../../context/AuthContext.jsx";
 
 vi.mock("../../components/AppHeader.jsx", () => ({
   default: () => <div data-testid="app-header">Header Mock</div>,
@@ -29,9 +30,22 @@ vi.mock("../../components/DropdownSelect.jsx", () => ({
 
 const firstEmployee = mockEmployees[0];
 
+const authValue = (role) => ({
+  role,
+  user: {
+    uid: `uid-${role}`,
+    email: `${role}@example.test`,
+    fullName: "Usuario de prueba",
+  },
+});
+
 const seedRegisterAbsence = async () => {
   const user = userEvent.setup();
-  const view = render(<RegisterAbsence isDark={false} onToggleTheme={vi.fn()} />);
+  const view = render(
+    <AuthContext.Provider value={authValue("administrativoSalud")}>
+      <RegisterAbsence isDark={false} onToggleTheme={vi.fn()} />
+    </AuthContext.Provider>,
+  );
 
   const nameInput = screen.getByPlaceholderText(/Escribe el nombre del empleado/i);
   await user.type(nameInput, firstEmployee.fullName);
@@ -89,7 +103,11 @@ describe("Flujo integral Registro → Validacion", () => {
 
     registerView.unmount();
 
-    render(<MedicalValidation isDark={false} onToggleTheme={vi.fn()} />);
+    render(
+      <AuthContext.Provider value={authValue("medico")}>
+        <MedicalValidation isDark={false} onToggleTheme={vi.fn()} />
+      </AuthContext.Provider>,
+    );
 
     const referenceCell = await screen.findByText(entry.reference);
     const row = referenceCell.closest("tr");

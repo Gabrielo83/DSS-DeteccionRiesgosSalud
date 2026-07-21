@@ -869,9 +869,13 @@ export const reconstruirIndicadoresRiesgo = onCall(
 );
 
 const rebuildAbsenceIndicator = async () => {
-  const snapshot = await db.collection("ausencias").get();
+  const [absenceSnapshot, employeeSnapshot] = await Promise.all([
+    db.collection("ausencias").get(),
+    db.collection("empleados").get(),
+  ]);
   const indicator = buildAbsenceIndicator(
-    snapshot.docs.map((document) => document.data()),
+    absenceSnapshot.docs.map((document) => document.data()),
+    employeeSnapshot.docs.map((document) => document.data()),
   );
   await db.doc("indicadores_ausentismo/global").set(
     {
@@ -893,6 +897,20 @@ export const actualizarIndicadoresAusentismo = onDocumentWritten(
     logger.info("Indicadores agregados de ausentismo actualizados.", {
       absenceId: event.params.absenceId,
       periodos: indicator.periodos.length,
+    });
+  },
+);
+
+export const actualizarDotacionAusentismo = onDocumentWritten(
+  {
+    document: "empleados/{employeeId}",
+    region: "us-east1",
+  },
+  async (event) => {
+    const indicator = await rebuildAbsenceIndicator();
+    logger.info("Dotacion agregada actualizada.", {
+      employeeId: event.params.employeeId,
+      periodos: indicator.dotacionPeriodos.length,
     });
   },
 );

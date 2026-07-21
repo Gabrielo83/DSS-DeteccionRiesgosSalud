@@ -67,7 +67,7 @@ Capas principales:
 La aplicacion no reemplaza Firebase por IndexedDB. Usa una copia operativa local y una cola de sincronizacion:
 
 1. La accion se refleja localmente y se registra con un ID idempotente.
-2. El adjunto temporal se guarda como `Blob` en IndexedDB, separado de la cola.
+2. El adjunto temporal se guarda cifrado con AES-GCM en IndexedDB, separado de los metadatos de la cola.
 3. Si no hay red, la operacion permanece pendiente.
 4. Al volver la conectividad, se procesa solo la cola del usuario autenticado.
 5. Firestore registra version, ID de origen, tiempo del cliente y timestamp del servidor.
@@ -83,7 +83,7 @@ Frase recomendada:
 
 > Offline-first garantiza continuidad de captura y consulta sobre la ultima copia valida. Los servicios exclusivamente remotos, como Storage y Cloud Functions, se completan al recuperar conectividad.
 
-La persistencia Firestore entre sesiones se activa solo en dispositivos confiables. Al cerrar sesion se limpia la cache clinica de la aplicacion, preservando unicamente operaciones pendientes vinculadas a su propietario para evitar perdida de trabajo.
+Firestore utiliza cache en memoria y no conserva automaticamente documentos entre sesiones. La continuidad se implementa mediante la cola cifrada de la aplicacion; al cerrar sesion se limpia la cache clinica hidratada y se preservan unicamente operaciones pendientes vinculadas a su propietario para evitar perdida de trabajo.
 
 Rutas principales:
 
@@ -102,7 +102,7 @@ Roles:
 
 - `superAdmin`: acceso completo.
 - `medico`: acceso completo operativo.
-- `administrativo`: registra ausencias, carga documentacion y consulta dashboard operativo.
+- `administrativo`: registra ausencias administrativas y consulta el dashboard operativo, sin recepcionar ni consultar certificados.
 - `administrativoSalud`: registra ausencias, carga documentacion y consulta legajos/certificados historicos por pertenecer al circuito de salud ocupacional, sin validar decisiones medicas.
 - `gerente`: consulta dashboard de indicadores y tendencias.
 - `respRRHH`: consulta dashboard y registra informacion administrativa de ausencias.
@@ -223,11 +223,11 @@ Datos que consume:
 
 Regla importante:
 
-- La tabla **Empleados con riesgo individual** muestra empleados con 3 eventos del mismo grupo diagnostico dentro de 6 meses; las alertas consolidadas exigen ademas que los eventos sean de riesgo individual medio o alto.
+- La tabla **Empleados con riesgo individual** permanece desactivada porque no forma parte de HU-005 ni del prototipo aprobado. El dashboard presenta indicadores y prevalencias agregadas; el detalle autorizado de una alerta se consulta desde el sector correspondiente.
 
 Como defenderlo:
 
-> El dashboard no diagnostica. Resume informacion validada y pendiente para priorizar la gestion preventiva. La tabla individual aparece solo cuando hay recurrencia suficiente para justificar seguimiento.
+> El dashboard no diagnostica. Presenta indicadores agregados, tendencias, prevalencias y alertas consolidadas para priorizar la gestion preventiva sin exponer un listado general de datos clinicos individuales.
 
 ## 6. Regla de riesgo individual
 
@@ -348,10 +348,10 @@ Archivos:
 
 Patron utilizado:
 
-1. Leer desde `localStorage`.
-2. Sincronizar con IndexedDB.
-3. Guardar cambios en ambos.
-4. Disparar eventos custom para refrescar pantallas.
+1. Mantener en `localStorage` solamente preferencias, indicadores agregados o metadatos operativos no sensibles.
+2. Guardar payloads y adjuntos pendientes en IndexedDB cifrados con AES-GCM.
+3. Aislar la cola por propietario y eliminar su contenido protegido al completar la sincronizacion.
+4. Disparar eventos custom para refrescar pantallas dentro de la SPA.
 
 Eventos importantes:
 
@@ -363,7 +363,7 @@ Eventos importantes:
 
 Como defenderlo:
 
-> localStorage da lectura rapida y simple. IndexedDB permite persistencia mas robusta. Los eventos custom mantienen sincronizadas las pantallas dentro de la SPA.
+> La aplicacion evita conservar informacion clinica legible en localStorage. El trabajo pendiente se cifra en IndexedDB, se aisla por usuario y se sincroniza al recuperar conectividad. Los eventos custom actualizan las pantallas dentro de la SPA.
 
 ## 10.1 Seguridad operativa implementada
 
@@ -371,10 +371,10 @@ Archivo principal: `src/App.jsx`
 
 Controles implementados para el prototipo:
 
-- Politica de contrasena segura en login: minimo 8 caracteres, mayusculas, minusculas, numeros y simbolos.
+- Politica de contrasena aplicada por Firebase Authentication / Identity Platform: minimo 8 caracteres, mayusculas, minusculas, numeros y simbolos. El login normal no expone esta politica; se aplica al crear o restablecer credenciales.
 - Expiracion de sesion tras 20 minutos de inactividad.
 - Limpieza de sesion persistida al cerrar sesion o expirar.
-- Auditoria local de eventos criticos.
+- Auditoria local de eventos criticos y persistencia remota en `auditoria` cuando Firebase esta activo y las reglas autorizan la escritura.
 
 Archivo de auditoria:
 
@@ -689,8 +689,8 @@ Porque esta version prioriza ejecucion local y demostracion funcional. La arquit
 - Las reglas `firestore.rules` y `storage.rules` protegen roles, colecciones clinicas y archivos de hasta 5 MB.
 - La auditoria se registra localmente y tambien en `auditoria` cuando Firebase esta activo.
 - Analytics y Performance quedan inicializados para verificar eventos funcionales desde Firebase Console.
-- Implementar MFA y JWT reales mediante Firebase Authentication.
-- Mover reglas sensibles y alertas criticas a Cloud Functions como evolucion de backend.
+- Firebase Authentication ya administra tokens de identidad y sesion. La autenticacion multifactor queda documentada como evolucion pendiente para roles sensibles.
+- Cloud Functions recalcula riesgo, recurrencia, alertas e indicadores agregados en el backend. La validacion profesional sigue siendo una decision explicita del usuario medico.
 
 ### El sistema diagnostica?
 

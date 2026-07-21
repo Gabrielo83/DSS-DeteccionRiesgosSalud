@@ -389,6 +389,22 @@ describe('Funcionalidad del Dashboard', () => {
     expect(screen.queryByRole('link', { name: /Legajos Medicos/i })).toBeNull()
   })
 
+  it('reserva certificados medicos al administrativo de Salud Ocupacional', () => {
+    renderDashboard('administrativo')
+
+    expect(screen.getByRole('link', { name: /Panel de Control/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Registro Ausencia/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Certificados Medicos/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Legajos Medicos/i })).toBeNull()
+  })
+
+  it('bloquea la ruta de certificados para un administrativo comun', async () => {
+    renderWithRole('/certificados-medicos', 'administrativo')
+
+    await screen.findByRole('heading', { name: /Panel de Control/i }, { timeout: 8000 })
+    expect(screen.queryByRole('heading', { name: /Certificados Medicos/i })).not.toBeInTheDocument()
+  }, 10000)
+
   it('bloquea la ruta de validacion medica para un rol administrativo', async () => {
     renderWithRole('/validacion-medica', 'administrativo')
 

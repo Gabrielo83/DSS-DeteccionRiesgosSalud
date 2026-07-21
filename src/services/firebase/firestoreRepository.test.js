@@ -91,5 +91,48 @@ describe("persistencia Firebase de ausencias generales", () => {
         String(path).startsWith("validaciones_medicas/"),
       ),
     ).toBe(false);
+
+    expect(mocks.setDoc).toHaveBeenCalledTimes(2);
+    for (const [path, operationDocument] of mocks.setDoc.mock.calls) {
+      expect(path).toBe("operations/op-absence-firebase");
+      expect(operationDocument).toMatchObject({
+        id: "op-absence-firebase",
+        ownerUid: "uid-rrhh",
+      });
+      expect(operationDocument.payload).toEqual({ _methodName: "deleteField" });
+    }
+  });
+
+  it("reintenta una operacion sobre los mismos documentos idempotentes", async () => {
+    const operation = {
+      id: "op-idempotente",
+      type: "submitAbsence",
+      payload: {
+        absenceId: "AUS-IDEMPOTENTE",
+        absence: {
+          absenceId: "AUS-IDEMPOTENTE",
+          employeeId: "LEG-020",
+          employeeName: "Empleado Prueba",
+          sector: "Produccion",
+          position: "Operario",
+          absenceType: "vacaciones",
+          startDate: "2026-10-01",
+          endDate: "2026-10-02",
+          absenceDays: 2,
+          requiresCertificate: false,
+        },
+      },
+      entityId: "AUS-IDEMPOTENTE",
+      user: "rrhh@test",
+      createdAt: "2026-09-20T12:00:00.000Z",
+    };
+
+    await syncOperationToFirestore(operation);
+    await syncOperationToFirestore(operation);
+
+    const absencePaths = mocks.transactionSet.mock.calls.map(([path]) => path);
+    expect(new Set(absencePaths)).toEqual(new Set(["ausencias/AUS-IDEMPOTENTE"]));
+    const operationPaths = mocks.setDoc.mock.calls.map(([path]) => path);
+    expect(new Set(operationPaths)).toEqual(new Set(["operations/op-idempotente"]));
   });
 });

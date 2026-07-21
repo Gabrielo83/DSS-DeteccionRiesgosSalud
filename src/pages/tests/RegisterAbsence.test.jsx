@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import RegisterAbsence from "../RegisterAbsence.jsx";
 import { mockEmployees } from "../../data/mockEmployees.js";
+import AuthContext from "../../context/AuthContext.jsx";
 
 vi.mock("../../components/AppHeader.jsx", () => ({
   default: () => <div data-testid="app-header">Header Mock</div>,
@@ -31,8 +32,21 @@ vi.mock("../../components/DropdownSelect.jsx", () => ({
   ),
 }));
 
-const renderPage = () =>
-  render(<RegisterAbsence isDark={false} onToggleTheme={vi.fn()} />);
+const renderPage = (role = "administrativoSalud") =>
+  render(
+    <AuthContext.Provider
+      value={{
+        role,
+        user: {
+          uid: `uid-${role}`,
+          email: `${role}@example.test`,
+          fullName: "Usuario de prueba",
+        },
+      }}
+    >
+      <RegisterAbsence isDark={false} onToggleTheme={vi.fn()} />
+    </AuthContext.Provider>,
+  );
 
 const firstEmployee = mockEmployees[0];
 const secondEmployee = mockEmployees[1];
@@ -167,6 +181,28 @@ describe("Funcionalidad de Registro de Ausencias", () => {
           text.includes("5")
       )
     ).toBeInTheDocument();
+  });
+
+  it("reserva certificados e informacion clinica al administrativo de salud", async () => {
+    const user = userEvent.setup();
+    renderPage("administrativo");
+
+    const typeSelect = screen.getByTestId("dropdown-absenceType");
+    expect(typeSelect).not.toHaveTextContent("Certificado Medico");
+    expect(screen.queryByText("Codigo CIE-10 (opcional)")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /Certificados en revision/i }),
+    ).not.toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText(/Escribe el nombre del empleado/i),
+      firstEmployee.fullName,
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: /Certificados recientes del colaborador/i,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it.each([

@@ -69,7 +69,7 @@ Roles funcionales:
 - `superAdmin`: acceso completo.
 - `medico`: validacion medica, legajos, dashboard, registro.
 - `administrativoSalud`: carga certificados, ve historial medico para evitar duplicados, no valida decisiones medicas.
-- `administrativo`: operacion administrativa limitada.
+- `administrativo`: registro administrativo de ausencias, sin recepcion ni lectura de certificados.
 - `respRRHH`: dashboard y registro administrativo.
 - `gerente`: consulta de indicadores.
 
@@ -172,7 +172,7 @@ Storage:
 Reglas de Storage:
 
 - Lectura clinica: `superAdmin`, `medico` y `administrativoSalud`.
-- Carga operativa: `superAdmin`, `medico`, `administrativo`, `administrativoSalud` y `respRRHH`.
+- Carga de certificados: `superAdmin`, `medico` y `administrativoSalud`.
 - Cada objeto registra el UID del cargador; solo ese usuario puede reintentar o reemplazar la misma ruta.
 - Eliminacion exclusiva de `superAdmin`.
 - Archivos permitidos: PDF, JPG, PNG.
@@ -242,7 +242,7 @@ Detalle y guion de prueba: `docs/OFFLINE_FIRST_DEFENSA.md`.
 
 ## Flujo de certificados
 
-1. Administrativo o administrativo de salud carga ausencia/certificado.
+1. `administrativoSalud` carga la ausencia con certificado; `administrativo` y `respRRHH` registran solamente gestiones administrativas sin documentacion clinica.
 2. Se crea documento en `validaciones_medicas`.
 3. Se crea documento en `ausencias`.
 4. El archivo se sube a Storage.
@@ -587,8 +587,40 @@ npm test -- --run --testTimeout 10000
 npm run build
 npm run build:firebase
 npm --prefix functions run lint
+npm --prefix functions test
+npm run test:rules
 npm run deploy:firebase:functions
 ```
+
+## Cierre de seguridad por roles
+
+- Gerencia consume `indicadores_ausentismo/global` version 2, que incluye dotacion mensual agregada por sector, sin descargar documentos de `empleados`.
+- `respRRHH` puede consultar ausencias administrativas, pero no crear validaciones medicas ni subir certificados a Storage.
+- Los borradores y las operaciones pendientes quedan aislados por `ownerUid`; `superAdmin` conserva acceso de auditoria a las operaciones.
+- La bitacora remota `operations` ya no copia el `payload` funcional ni los campos clinicos del formulario; registra solamente identificadores, estado, propietario, intentos y marcas temporales.
+- Las reglas aplican una lista cerrada de campos en `operations`; cada sincronizacion elimina explicitamente cualquier `payload` heredado.
+- Un borrador antiguo sin `ownerUid` solo puede ser asignado por `superAdmin` a un UID existente y sin modificar simultaneamente su contenido clinico.
+- Storage refuerza en backend los tipos PDF/JPEG/PNG y el limite maximo de 5 MB.
+- Se incorporo una suite de reglas sobre emuladores para probar permisos por rol, aislamiento entre propietarios y rechazo de archivos invalidos.
+- `test:rules` requiere Firebase CLI instalada globalmente y Java 21 para ejecutar los emuladores; la CLI no forma parte del bundle ni de las dependencias del proyecto.
+- Brecha aceptada para el proximo sprint: `empleados` todavia combina campos de directorio con datos ampliados. El frontend los oculta a roles no clinicos, pero Firestore no ofrece autorizacion por campo; la solucion futura es separar `directorio_empleados` mediante una migracion controlada.
+
+Evidencia automatizada de este cierre:
+
+- ESLint frontend: correcto.
+- Sintaxis/lint de Functions: correcto.
+- Suite frontend: 14 archivos y 84 pruebas correctas.
+- Suite backend: 15 pruebas correctas, incluida una prueba de volumen con 5.000 registros de historial, 5.000 ausencias y 1.000 empleados.
+- Suite de reglas: 11 pruebas correctas sobre emuladores de Firestore y Storage.
+- Reintento idempotente de una ausencia: la misma operacion conserva los identificadores de `ausencias` y `operations` y no crea documentos duplicados.
+- Builds local y Firebase: correctos; quedan advertencias no bloqueantes por tamano del bundle y datos de navegadores desactualizados.
+- Auditoria npm del frontend/runtime: 0 vulnerabilidades. Cloud Functions conserva 7 avisos moderados transitivos en dependencias oficiales, sin avisos altos ni criticos y sin correccion compatible no disruptiva disponible.
+
+Documentos de cierre relacionados:
+
+- `docs/MATRIZ_TRAZABILIDAD_HU.md`: relacion entre historias de usuario, criterios, codigo y pruebas.
+- `docs/DIFERENCIAS_JUSTIFICADAS_TFG.md`: diferencias comprobadas respecto de la memoria y argumento tecnico para la defensa.
+- `docs/RESULTADOS_VERIFICACION.md`: casos de cierre, resultado obtenido, evidencia y limitaciones de la verificacion.
 
 Nota: en Codex, Vite/esbuild a veces falla dentro del sandbox con acceso denegado a `vite.config.js`; en esos casos se repite con ejecucion normal autorizada. No es fallo del proyecto.
 
@@ -622,13 +654,13 @@ Agregar aqui cualquier decision tomada fuera de este chat:
   - Se documenta como evolucion: si no se alcanza a activar completamente antes de la defensa.
 
 - App Check:
-  - Se implementa:
-  - Se documenta como evolucion:
+  - Se implementa: no.
+  - Se documenta como evolucion: si, como proteccion adicional frente a clientes no autorizados, sujeta a pruebas antes de la defensa.
 
 - Alertas backend:
   - Coleccion elegida: `alertas_riesgo`.
   - Campos: empleado, grupo, estado, motivos, recurrencias, ventana, riesgo maximo, referencias y timestamps de ciclo de vida.
-  - Pantallas que consumen: agendado para etapa 3.5 en Panel de Control y detalle de alerta, reutilizando el diseno existente.
+  - Estado: implementado mediante Cloud Functions, proyecciones agregadas y consumo en Panel de Control y detalle autorizado por sector.
 
 - Node 22:
   - Fecha de migracion: 18/07/2026.

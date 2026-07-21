@@ -33,7 +33,17 @@ describe("Dashboard Firebase agregado para Gerencia", () => {
       },
     ]);
     replaceAbsenceIndicator({
-      version: "absence-indicator-v1",
+      version: "absence-indicator-v2",
+      workforcePeriods: [
+        {
+          period: "2026-07",
+          active: 2,
+          sectors: [
+            { sector: "Produccion", active: 1 },
+            { sector: "Ventas", active: 1 },
+          ],
+        },
+      ],
       periods: [
         {
           period: "2026-07",

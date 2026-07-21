@@ -46,6 +46,11 @@ export const deleteBorrador = (draftId) =>
 
 export const listBorradores = () => listCollection(COLLECTIONS.BORRADORES);
 
+export const listBorradoresPorPropietario = (ownerUid) =>
+  queryCollection(COLLECTIONS.BORRADORES, {
+    filters: [["ownerUid", "==", ownerUid]],
+  });
+
 export const savePlanPreventivo = (employeeId, data) =>
   upsertDocById(COLLECTIONS.PLANES, employeeId, data, {
     includeCreated: true,

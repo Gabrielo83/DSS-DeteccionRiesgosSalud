@@ -466,7 +466,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     return entries;
   }, [employeeIndexById, historySnapshot]);
 
-  const headcountActive = useMemo(() => {
+  const localHeadcountActive = useMemo(() => {
     const { startMs, endMs } = periodRange;
     return employees.filter((emp) => {
       if (emp.active === false) return false;
@@ -479,7 +479,7 @@ function Dashboard({ isDark, onToggleTheme }) {
     }).length;
   }, [employees, periodRange]);
 
-  const headcountBySector = useMemo(() => {
+  const localHeadcountBySector = useMemo(() => {
     const { startMs, endMs } = periodRange;
     const map = new Map();
     employees.forEach((emp) => {
@@ -537,6 +537,25 @@ function Dashboard({ isDark, onToggleTheme }) {
       ) || null,
     [absenceIndicator, selectedPeriodKey],
   );
+  const selectedWorkforcePeriod = useMemo(
+    () =>
+      absenceIndicator?.workforcePeriods?.find(
+        (period) => period.period === selectedPeriodKey,
+      ) || null,
+    [absenceIndicator, selectedPeriodKey],
+  );
+  const headcountActive = useAggregatedAbsence
+    ? selectedWorkforcePeriod?.active || 0
+    : localHeadcountActive;
+  const headcountBySector = useMemo(() => {
+    if (!useAggregatedAbsence) return localHeadcountBySector;
+    return new Map(
+      (selectedWorkforcePeriod?.sectors || []).map((sector) => [
+        sector.sector,
+        Number(sector.active || 0),
+      ]),
+    );
+  }, [localHeadcountBySector, selectedWorkforcePeriod, useAggregatedAbsence]);
   const prevalenceWindow = useMemo(() => {
     const months = [];
     for (let offset = PREVALENCE_WINDOW_MONTHS - 1; offset >= 0; offset -= 1) {
@@ -1293,6 +1312,12 @@ function Dashboard({ isDark, onToggleTheme }) {
         period,
       ]),
     );
+    const workforcePeriods = new Map(
+      (absenceIndicator?.workforcePeriods || []).map((period) => [
+        period.period,
+        period,
+      ]),
+    );
     const alertPeriods = new Map(
       (riskAlertSummary?.periods || []).map((period) => [
         period.period,
@@ -1348,18 +1373,23 @@ function Dashboard({ isDark, onToggleTheme }) {
               ),
             0,
           );
-      const activeHeadcount = employees.filter((employee) => {
-        if (employee.active === false) return false;
-        const hire = Date.parse(employee.hireDate);
-        const termination = employee.terminationDate
-          ? Date.parse(employee.terminationDate)
-          : null;
-        return (
-          !Number.isNaN(hire) &&
-          hire <= endMs &&
-          (!termination || termination >= startMs)
-        );
-      }).length;
+      const aggregateWorkforce = useAggregatedAbsence
+        ? workforcePeriods.get(month.key)
+        : null;
+      const activeHeadcount = aggregateWorkforce
+        ? Number(aggregateWorkforce.active || 0)
+        : employees.filter((employee) => {
+            if (employee.active === false) return false;
+            const hire = Date.parse(employee.hireDate);
+            const termination = employee.terminationDate
+              ? Date.parse(employee.terminationDate)
+              : null;
+            return (
+              !Number.isNaN(hire) &&
+              hire <= endMs &&
+              (!termination || termination >= startMs)
+            );
+          }).length;
       const workingDays = countWorkingDays(
         new Date(month.year, month.month, 1),
         new Date(month.year, month.month + 1, 0),

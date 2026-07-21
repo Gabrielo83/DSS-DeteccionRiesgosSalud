@@ -38,6 +38,57 @@ service cloud.firestore {
       ]);
     }
 
+    function canManageCertificateIntake() {
+      return hasAnyRole([
+        "superAdmin",
+        "medico",
+        "administrativoSalud"
+      ]);
+    }
+
+    function ownsExistingDocument() {
+      return signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    function ownsRequestedDocument() {
+      return signedIn() && request.resource.data.ownerUid == request.auth.uid;
+    }
+
+    function ownsLegacyOperation() {
+      return signedIn()
+        && !resource.data.keys().hasAny(["ownerUid"])
+        && resource.data.user is string
+        && resource.data.user == request.auth.token.email;
+    }
+
+    function isValidOperationDocument(operationId) {
+      return request.resource.data.keys().hasOnly([
+          "id",
+          "type",
+          "user",
+          "ownerUid",
+          "entityId",
+          "localCreatedAt",
+          "retryCount",
+          "syncStatus",
+          "syncError",
+          "attemptedAt",
+          "syncedAt"
+        ])
+        && request.resource.data.id == operationId
+        && request.resource.data.type is string
+        && request.resource.data.ownerUid == request.auth.uid;
+    }
+
+    function canAdoptLegacyDraftAsAdmin() {
+      return hasAnyRole(["superAdmin"])
+        && !resource.data.keys().hasAny(["ownerUid"])
+        && request.resource.data.ownerUid is string
+        && exists(/databases/$(database)/documents/usuarios/$(request.resource.data.ownerUid))
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["ownerUid", "updatedAt"]);
+    }
+
     function isValidUserProfile(uid) {
       return request.resource.data.keys().hasOnly([
           "uid",
@@ -70,7 +121,7 @@ service cloud.firestore {
     }
 
     match /empleados/{employeeId} {
-      allow read: if signedIn();
+      allow read: if isOperational();
       allow create, update, delete: if hasAnyRole(["superAdmin", "respRRHH"]);
     }
 
@@ -82,9 +133,10 @@ service cloud.firestore {
 
     match /validaciones_medicas/{reference} {
       allow read: if isClinical();
-      allow create: if isOperational();
+      allow create: if canManageCertificateIntake();
       allow update: if isMedicalReviewer()
-        || (isOperational() && resource.data.estado in ["pendiente", "en_revision", "Pendiente", "En Revision"]);
+        || (canManageCertificateIntake()
+          && resource.data.estado in ["pendiente", "en_revision", "Pendiente", "En Revision"]);
       allow delete: if hasAnyRole(["superAdmin"]);
     }
 
@@ -95,7 +147,14 @@ service cloud.firestore {
     }
 
     match /borradores/{draftId} {
-      allow read, create, update, delete: if isOperational();
+      allow read: if hasAnyRole(["superAdmin"]) || ownsExistingDocument();
+      allow create: if isOperational() && ownsRequestedDocument();
+      allow update: if (isOperational()
+          && ownsExistingDocument()
+          && ownsRequestedDocument())
+        || canAdoptLegacyDraftAsAdmin();
+      allow delete: if hasAnyRole(["superAdmin"])
+        || (isOperational() && ownsExistingDocument());
     }
 
     match /planes_preventivos/{employeeId} {
@@ -141,7 +200,10 @@ service cloud.firestore {
     }
 
     match /operations/{operationId} {
-      allow read, create, update: if signedIn();
+      allow read: if hasAnyRole(["superAdmin"]) || ownsExistingDocument();
+      allow create: if isValidOperationDocument(operationId);
+      allow update: if isValidOperationDocument(operationId)
+        && (ownsExistingDocument() || ownsLegacyOperation());
       allow delete: if hasAnyRole(["superAdmin"]);
     }
 

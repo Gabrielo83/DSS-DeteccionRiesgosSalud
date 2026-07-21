@@ -22,7 +22,7 @@ const SESSION_LAST_ACTIVITY_KEY = "sessionLastActivityAt";
 const ROLE_PERMISSIONS = {
   superAdmin: ["dashboard", "registro", "certificados", "validacion", "legajos"],
   medico: ["dashboard", "registro", "certificados", "validacion", "legajos"],
-  administrativo: ["dashboard", "registro", "certificados"],
+  administrativo: ["dashboard", "registro"],
   administrativoSalud: ["dashboard", "registro", "certificados", "legajos"],
   gerente: ["dashboard"],
   respRRHH: ["dashboard", "registro"],
@@ -44,7 +44,7 @@ const ROUTE_ACCESS = {
     "administrativoSalud",
     "respRRHH",
   ],
-  certificados: ["superAdmin", "medico", "administrativo", "administrativoSalud"],
+  certificados: ["superAdmin", "medico", "administrativoSalud"],
   validacion: ["superAdmin", "medico"],
   legajos: ["superAdmin", "medico", "administrativoSalud"],
 };

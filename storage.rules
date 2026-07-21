@@ -22,13 +22,11 @@ service firebase.storage {
       return hasAnyRole(["superAdmin", "medico", "administrativoSalud"]);
     }
 
-    function isOperational() {
+    function canUploadCertificate() {
       return hasAnyRole([
         "superAdmin",
         "medico",
-        "administrativo",
-        "administrativoSalud",
-        "respRRHH"
+        "administrativoSalud"
       ]);
     }
 
@@ -55,10 +53,10 @@ service firebase.storage {
 
     match /certificados/{reference}/{fileName} {
       allow read: if isClinical();
-      allow create: if isOperational()
+      allow create: if canUploadCertificate()
         && isAllowedCertificateFile()
         && isOwnedUpload();
-      allow update: if isOperational()
+      allow update: if canUploadCertificate()
         && isAllowedCertificateFile()
         && isOwnedReplacement();
       allow delete: if hasAnyRole(["superAdmin"]);

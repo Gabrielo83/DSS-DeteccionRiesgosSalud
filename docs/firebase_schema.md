@@ -102,6 +102,7 @@ sincroniza e hidrata datos contra estas colecciones.
 
 5) `borradores/{draftId}`
 - draftId
+- ownerUid (UID propietario; obligatorio para aislar el borrador)
 - employeeId, nombreCompleto
 - sector
 - puesto
@@ -157,7 +158,7 @@ sincroniza e hidrata datos contra estas colecciones.
 11) `operations/{operationId}`
 - id
 - type
-- payload sin `previewUrl` base64
+- ownerUid (UID propietario)
 - user
 - entityId
 - retryCount
@@ -187,10 +188,14 @@ Notas
 - Firestore no debe persistir `previewUrl` local/base64; para registros nuevos debe guardar `storagePath`. `downloadUrl` se conserva solo por compatibilidad con registros historicos.
 - La vista clinica descarga el objeto mediante el SDK autenticado y genera una URL temporal en memoria.
 - `operations` es bitacora tecnica de sincronizacion; el dato funcional vive en colecciones de dominio.
+- `operations` no replica `payload`: una lista cerrada de campos en reglas conserva solo metadatos tecnicos y el sincronizador elimina cualquier `payload` heredado.
+- Las lecturas de `borradores` y `operations` se limitan al UID propietario o a `superAdmin`; las operaciones antiguas pueden adoptar `ownerUid` solo si su correo coincide con el token autenticado.
+- Los borradores antiguos sin propietario no se asignan por nombre. `superAdmin` puede agregar exclusivamente `ownerUid` despues de verificar al usuario, evitando una asociacion automatica insegura.
 - Las reglas de Storage aceptan solo PDF/JPG/PNG de hasta 5 MB.
-- Las reglas de Storage permiten lectura a `superAdmin`, `medico` y `administrativoSalud`; los roles operativos solo pueden cargar y reintentar sus propios objetos.
+- Las reglas de Storage permiten lectura y carga a `superAdmin`, `medico` y `administrativoSalud`; cada reemplazo exige conservar el mismo UID cargador.
 - Las reglas de Firestore limitan datos clinicos a `superAdmin`, `medico` y `administrativoSalud`.
 - `alertas_riesgo` es de solo lectura para roles clinicos; solo Cloud Functions escribe o resuelve alertas.
+- `indicadores_ausentismo/global` version 2 incluye dotacion mensual agregada por sector, sin documentos de empleados, para que Gerencia calcule tasas e historicos sin leer legajos.
 
 ## Diagrama (Mermaid)
 

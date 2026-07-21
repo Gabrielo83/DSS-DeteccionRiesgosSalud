@@ -199,13 +199,14 @@ const buildBasePayload = (operation, syncStatus = "processing", error = null) =>
   stripUndefined({
     id: operation.id,
     type: operation.type,
-    payload: stripTransientFileData(operation.payload || {}),
     user: operation.user || null,
+    ownerUid: operation.ownerUid || null,
     entityId: operation.entityId || null,
     localCreatedAt: operation.createdAt || null,
     retryCount: operation.retryCount || 0,
     syncStatus,
     syncError: error,
+    payload: deleteField(),
     attemptedAt: serverTimestamp(),
     ...(syncStatus === "synced" ? { syncedAt: serverTimestamp() } : {}),
   });
@@ -234,6 +235,7 @@ const writeDraft = async (db, operation) => {
       draftRef,
       stripUndefined(stripTransientFileData({
         ...mapDraftPayloadToFirestore(draft),
+        ownerUid: operation.ownerUid,
         sourceOperationId: operation.id,
         syncVersion: Number(existing.syncVersion || 0) + 1,
         clientUpdatedAt: operation.createdAt || null,
@@ -431,23 +433,30 @@ const writeCertificateDecision = async (db, operation) => {
 
 export const syncOperationToFirestore = async (operation) => {
   const { auth, db, storage } = getFirebaseServices();
-  if (operation.type === "submitCertificate") {
-    const certificate = operation.payload?.certificate || operation.payload || {};
+  const ownedOperation = {
+    ...operation,
+    ownerUid: auth.currentUser?.uid || operation.ownerUid || "",
+  };
+  if (ownedOperation.type === "submitCertificate") {
+    const certificate =
+      ownedOperation.payload?.certificate || ownedOperation.payload || {};
     const reference =
-      certificate.reference || operation.payload?.reference || operation.entityId;
+      certificate.reference ||
+      ownedOperation.payload?.reference ||
+      ownedOperation.entityId;
     if (reference) {
       const snapshot = await getDoc(doc(db, "validaciones_medicas", reference));
-      assertClinicalWriteAllowed(snapshot.data(), operation);
+      assertClinicalWriteAllowed(snapshot.data(), ownedOperation);
     }
   }
   const preparedOperation =
-    operation.type === "submitCertificate"
+    ownedOperation.type === "submitCertificate"
       ? await prepareSubmitCertificateOperation(
           storage,
-          operation,
+          ownedOperation,
           auth.currentUser?.uid || "",
         )
-      : operation;
+      : ownedOperation;
 
   await writeOperationAudit(db, preparedOperation, "processing");
 

@@ -1,5 +1,5 @@
 import {
-  listBorradores,
+  listBorradoresPorPropietario,
   listAusencias,
   listEmpleados,
   listHistorial,
@@ -12,7 +12,7 @@ import {
   listAlertasRiesgo,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
-import { collection, doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { getFirebaseServices } from "./firebaseClient.js";
 import { readDrafts, replaceDrafts } from "../../utils/draftStorage.js";
 import { replaceEmployees } from "../../utils/employeeStorage.js";
@@ -300,6 +300,14 @@ const normalizeAbsenceIndicator = (doc = {}) => ({
       })),
     })),
   })),
+  workforcePeriods: (doc.dotacionPeriodos || []).map((period) => ({
+    period: period.periodo || "",
+    active: Number(period.activos || 0),
+    sectors: (period.sectores || []).map((sector) => ({
+      sector: sector.sector || "Sin sector",
+      active: Number(sector.activos || 0),
+    })),
+  })),
   version: doc.version || "",
   updatedAt: toIsoString(doc.actualizadoEn),
 });
@@ -360,7 +368,9 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     indicadorAusentismoResult,
   ] =
     await Promise.all([
-      fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
+      canReadOperational
+        ? fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail)
+        : Promise.resolve({ ok: true, value: [], error: null }),
       fetchOrFallback(listPatologias, [], "firebase_hydration_failed", detail),
       fetchOrFallback(
         () => getParametrosRiesgo("global"),
@@ -382,8 +392,13 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       canReadClinical
         ? fetchOrFallback(listHistorial, [], "firebase_hydration_failed", detail)
         : Promise.resolve({ ok: true, value: [], error: null }),
-      canReadOperational
-        ? fetchOrFallback(listBorradores, [], "firebase_hydration_failed", detail)
+      canReadOperational && user?.uid
+        ? fetchOrFallback(
+            () => listBorradoresPorPropietario(user.uid),
+            [],
+            "firebase_hydration_failed",
+            detail,
+          )
         : Promise.resolve({ ok: true, value: [], error: null }),
       canReadClinical
         ? fetchOrFallback(
@@ -458,7 +473,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   if (
     indicadorAusentismoResult.ok &&
     (!indicadorAusentismo ||
-      indicadorAusentismo.version !== "absence-indicator-v1") &&
+      indicadorAusentismo.version !== "absence-indicator-v2") &&
     (typeof navigator === "undefined" || navigator.onLine !== false)
   ) {
     const rebuildResult = await fetchOrFallback(
@@ -491,7 +506,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     }
   }
 
-  if (empleadosResult.ok) {
+  if (canReadOperational && empleadosResult.ok) {
     replaceEmployees(empleados.map(normalizeEmployee));
   }
   if (patologiasResult.ok && parametrosRiesgoResult.ok) {
@@ -877,10 +892,13 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
     ),
   );
 
-  if (canReadOperational) {
+  if (canReadOperational && user?.uid) {
     unsubscribers.push(
       onSnapshot(
-        collection(db, "borradores"),
+        query(
+          collection(db, "borradores"),
+          where("ownerUid", "==", user.uid),
+        ),
         (snapshot) => {
           if (shouldPreserveLocalSnapshot(snapshot)) return;
           replaceDrafts(

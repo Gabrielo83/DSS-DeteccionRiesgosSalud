@@ -163,6 +163,13 @@ const absenceTypes = [
   { value: "permiso-especial", label: "Permiso Especial" },
 ];
 
+const MEDICAL_ABSENCE_TYPES = ["enfermedad", "accidente"];
+const CERTIFICATE_INTAKE_ROLES = [
+  "superAdmin",
+  "medico",
+  "administrativoSalud",
+];
+
 const resolveAbsenceTypeLabel = (value) =>
   absenceTypes.find((item) => item.value === value)?.label || "Ausencia";
 
@@ -309,6 +316,14 @@ const createInitialFormValues = () => ({
 
 function RegisterAbsence({ isDark, onToggleTheme }) {
   const auth = useContext(AuthContext);
+  const canManageMedicalCertificates = CERTIFICATE_INTAKE_ROLES.includes(
+    auth?.role,
+  );
+  const availableAbsenceTypes = canManageMedicalCertificates
+    ? absenceTypes
+    : absenceTypes.filter(
+        ({ value }) => !MEDICAL_ABSENCE_TYPES.includes(value),
+      );
   const currentUserName = auth?.user?.fullName || "Usuario no identificado";
   const queueOwnerIds = [auth?.user?.uid, auth?.user?.email].filter(Boolean);
   const [employees, setEmployees] = useState(() =>
@@ -887,9 +902,11 @@ const clearCertificateFile = () => {
     setCertificateReference(null);
   };
 
-  const requiresMedicalCertificate = ["enfermedad", "accidente"].includes(
-    formValues.absenceType
+  const isMedicalAbsenceType = MEDICAL_ABSENCE_TYPES.includes(
+    formValues.absenceType,
   );
+  const requiresMedicalCertificate =
+    canManageMedicalCertificates && isMedicalAbsenceType;
 
   useEffect(() => {
     if (requiresMedicalCertificate && certificateFile && !certificateReference) {
@@ -942,6 +959,9 @@ const clearCertificateFile = () => {
     }
     if (!formValues.absenceType) {
       errors.absenceType = "Selecciona un tipo de ausencia.";
+    } else if (isMedicalAbsenceType && !canManageMedicalCertificates) {
+      errors.absenceType =
+        "Tu rol no tiene permisos para gestionar certificados medicos.";
     }
     if (requiresMedicalCertificate && !formValues.pathologyCategory) {
       errors.pathologyCategory = "Selecciona un grupo de patologia.";
@@ -1475,7 +1495,7 @@ const clearCertificateFile = () => {
               </div>
             </SectionCard>
 
-            {formValues.employeeId ? (
+            {canManageMedicalCertificates && formValues.employeeId ? (
               <SectionCard
                 title="Certificados recientes del colaborador"
                 icon={sectionIcons.certificate}
@@ -1623,7 +1643,7 @@ const clearCertificateFile = () => {
                     name="absenceType"
                     value={formValues.absenceType}
                     onChange={handleSelectChange("absenceType")}
-                    options={absenceTypes}
+                    options={availableAbsenceTypes}
                     placeholder="Seleccionar tipo de ausencia"
                   />
                   {formErrors.absenceType ? (
@@ -1651,6 +1671,7 @@ const clearCertificateFile = () => {
                     </p>
                   ) : null}
                 </div>
+                {requiresMedicalCertificate ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -1699,6 +1720,7 @@ const clearCertificateFile = () => {
                     />
                   </div>
                 </div>
+                ) : null}
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Observaciones Adicionales
@@ -1826,6 +1848,7 @@ const clearCertificateFile = () => {
               </SectionCard>
             ) : null}
 
+            {canManageMedicalCertificates ? (
             <SectionCard
               title="Certificados en revision"
               description="Solicitudes que el equipo medico marco para ajustes"
@@ -1904,6 +1927,7 @@ const clearCertificateFile = () => {
                 </div>
               )}
             </SectionCard>
+            ) : null}
 
             <SectionCard
               title="Estado y Acciones"
