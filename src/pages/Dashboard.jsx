@@ -82,6 +82,15 @@ const extractScoreValue = (input) => {
 
 const MIN_RECURRENT_COUNT = 3;
 const RECURRENCE_WINDOW_MONTHS = 6;
+const PREVALENCE_WINDOW_MONTHS = 3;
+const SHOW_INDIVIDUAL_RISK_TABLE = false;
+const PREVALENCE_ROLES = new Set([
+  "superAdmin",
+  "medico",
+  "administrativoSalud",
+  "gerente",
+  "respRRHH",
+]);
 const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
   new Date(2024, i, 1).toLocaleDateString("es-AR", { month: "long" }),
 );
@@ -509,6 +518,103 @@ function Dashboard({ isDark, onToggleTheme }) {
       ) || null,
     [riskIndicator, selectedPeriodKey],
   );
+  const prevalenceWindow = useMemo(() => {
+    const months = [];
+    for (let offset = PREVALENCE_WINDOW_MONTHS - 1; offset >= 0; offset -= 1) {
+      const date = new Date(periodYear, periodMonth - offset, 1);
+      months.push({
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+      });
+    }
+    const first = months[0];
+    const last = months[months.length - 1];
+    const sameYear = first.year === last.year;
+    return {
+      periodKeys: new Set(months.map((month) => month.key)),
+      startMs: new Date(first.year, first.month, 1).getTime(),
+      endMs: new Date(last.year, last.month + 1, 0, 23, 59, 59, 999).getTime(),
+      label: sameYear
+        ? `${MONTH_LABELS[first.month]} a ${MONTH_LABELS[last.month]} de ${last.year}`
+        : `${MONTH_LABELS[first.month]} de ${first.year} a ${MONTH_LABELS[last.month]} de ${last.year}`,
+    };
+  }, [periodMonth, periodYear]);
+  const prevalentDiagnosticGroups = useMemo(() => {
+    const finalize = (groups) => {
+      const rows = Array.from(groups.values()).sort(
+        (left, right) =>
+          right.count - left.count ||
+          right.days - left.days ||
+          left.label.localeCompare(right.label),
+      );
+      const total = rows.reduce((sum, row) => sum + row.count, 0);
+      return rows.slice(0, 5).map((row) => ({
+        ...row,
+        percentage: total ? Math.round((row.count / total) * 100) : 0,
+      }));
+    };
+
+    const aggregateGroups = new Map();
+    (riskIndicator?.periods || [])
+      .filter((period) => prevalenceWindow.periodKeys.has(period.period))
+      .flatMap((period) => period.groups || [])
+      .forEach((group) => {
+        const category = group.pathologyCategory || "sin-grupo";
+        const label =
+          pathologyCategoryMap.get(category) ||
+          (category === "sin-grupo" ? "Sin grupo informado" : category);
+        const current = aggregateGroups.get(category) || {
+          key: category,
+          label,
+          count: 0,
+          days: 0,
+        };
+        current.count += Number(group.certificateCount || 0);
+        current.days += Number(group.daysLost || 0);
+        aggregateGroups.set(category, current);
+      });
+
+    if (firebaseMode && aggregateGroups.size) {
+      return finalize(aggregateGroups);
+    }
+    if (firebaseMode && !canReadAlertDetail) return [];
+
+    const localEntries = allHistoryEntries.filter((entry) => {
+      const status = String(entry.status || "").toLowerCase();
+      if (status !== "validado" && status !== "aprobado") return false;
+      const candidateDate =
+        entry.startDate ||
+        entry.issueDate ||
+        entry.issued ||
+        entry.validityDate ||
+        entry.updatedAt;
+      return isWithinPeriod(
+        candidateDate,
+        prevalenceWindow.startMs,
+        prevalenceWindow.endMs,
+      );
+    });
+    const localGroups = new Map(
+      buildDiagnosticGroupSummary(localEntries).map((group) => [
+        group.label,
+        {
+          key: group.label,
+          label: group.label,
+          count: group.count,
+          days: group.days,
+        },
+      ]),
+    );
+    return finalize(localGroups);
+  }, [
+    allHistoryEntries,
+    canReadAlertDetail,
+    firebaseMode,
+    prevalenceWindow,
+    riskIndicator,
+  ]);
+  const canViewPrevalence = PREVALENCE_ROLES.has(role);
   const aggregateSectorMetrics = useMemo(
     () =>
       new Map(
@@ -1881,6 +1987,48 @@ function Dashboard({ isDark, onToggleTheme }) {
           </article>
         </section>
 
+        {canViewPrevalence ? (
+          <section className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50">
+            <header>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Grupos diagnosticos prevalentes
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Ultimos 3 meses · {prevalenceWindow.label}
+              </p>
+            </header>
+            {prevalentDiagnosticGroups.length ? (
+              <ol className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
+                {prevalentDiagnosticGroups.map((group, index) => (
+                  <li
+                    key={group.key}
+                    className="grid min-h-16 grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 py-3 sm:grid-cols-[2rem_minmax(0,1fr)_auto_auto]"
+                  >
+                    <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">
+                      {index + 1}
+                    </span>
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {group.label}
+                    </span>
+                    <span className="col-start-2 text-sm text-slate-500 dark:text-slate-400 sm:col-start-auto">
+                      {group.count} certificado{group.count === 1 ? "" : "s"} · {group.days}{" "}
+                      dia{group.days === 1 ? "" : "s"}
+                    </span>
+                    <span className="col-start-2 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:col-start-auto sm:min-w-12 sm:text-right">
+                      {group.percentage}%
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="mt-5 border-t border-slate-100 py-5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                No hay certificados validados en la ventana seleccionada.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {SHOW_INDIVIDUAL_RISK_TABLE ? (
         <section>
           <article className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1993,6 +2141,7 @@ function Dashboard({ isDark, onToggleTheme }) {
             </div>
           </article>
         </section>
+        ) : null}
 
         <section className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">

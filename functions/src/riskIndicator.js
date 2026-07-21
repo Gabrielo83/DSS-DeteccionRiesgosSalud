@@ -19,9 +19,10 @@ const createAccumulator = () => ({
   diasPerdidos: 0,
   sumaRiesgo: 0,
   riesgosInformados: 0,
+  groups: new Map(),
 });
 
-const addEntry = (target, entry) => {
+const addTotals = (target, entry) => {
   target.certificados += 1;
   target.diasPerdidos += Number(entry.dias) || 0;
   const risk = Number(entry.riesgoPuntaje);
@@ -31,7 +32,17 @@ const addEntry = (target, entry) => {
   }
 };
 
-const finalize = (accumulator) => ({
+const addEntry = (target, entry) => {
+  addTotals(target, entry);
+  const pathologyGroup = String(entry.grupoPatologia || "").trim();
+  if (!pathologyGroup) return;
+  if (!target.groups.has(pathologyGroup)) {
+    target.groups.set(pathologyGroup, createAccumulator());
+  }
+  addTotals(target.groups.get(pathologyGroup), entry);
+};
+
+const finalizeTotals = (accumulator) => ({
   certificados: accumulator.certificados,
   diasPerdidos: accumulator.diasPerdidos,
   promedioRiesgo: accumulator.riesgosInformados
@@ -39,6 +50,19 @@ const finalize = (accumulator) => ({
         (accumulator.sumaRiesgo / accumulator.riesgosInformados).toFixed(1),
       )
     : null,
+});
+
+const finalize = (accumulator) => ({
+  ...finalizeTotals(accumulator),
+  grupos: Array.from(accumulator.groups, ([grupoPatologia, group]) => ({
+    grupoPatologia,
+    ...finalizeTotals(group),
+  })).sort(
+    (left, right) =>
+      right.certificados - left.certificados ||
+      right.diasPerdidos - left.diasPerdidos ||
+      left.grupoPatologia.localeCompare(right.grupoPatologia),
+  ),
 });
 
 export const buildRiskIndicator = (history = []) => {
@@ -78,6 +102,6 @@ export const buildRiskIndicator = (history = []) => {
   return {
     periodos,
     origen: "cloud-functions",
-    version: "risk-indicator-v1",
+    version: "risk-indicator-v2",
   };
 };

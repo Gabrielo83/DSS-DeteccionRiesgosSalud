@@ -247,13 +247,26 @@ const normalizeRiskIndicator = (doc = {}) => ({
     averageRisk: period.promedioRiesgo ?? null,
     certificateCount: period.certificados || 0,
     daysLost: period.diasPerdidos || 0,
+    groups: (period.grupos || []).map((group) => ({
+      pathologyCategory: group.grupoPatologia || "",
+      certificateCount: Number(group.certificados || 0),
+      daysLost: Number(group.diasPerdidos || 0),
+      averageRisk: group.promedioRiesgo ?? null,
+    })),
     sectors: (period.sectores || []).map((sector) => ({
       sector: sector.sector || "Sin sector",
       averageRisk: sector.promedioRiesgo ?? null,
       certificateCount: sector.certificados || 0,
       daysLost: sector.diasPerdidos || 0,
+      groups: (sector.grupos || []).map((group) => ({
+        pathologyCategory: group.grupoPatologia || "",
+        certificateCount: Number(group.certificados || 0),
+        daysLost: Number(group.diasPerdidos || 0),
+        averageRisk: group.promedioRiesgo ?? null,
+      })),
     })),
   })),
+  version: doc.version || "",
   updatedAt: toIsoString(doc.actualizadoEn),
 });
 
@@ -390,7 +403,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   let indicadorRiesgoFresh = indicadorRiesgoResult.ok;
   if (
     indicadorRiesgoResult.ok &&
-    !indicadorRiesgo &&
+    (!indicadorRiesgo || indicadorRiesgo.version !== "risk-indicator-v2") &&
     (typeof navigator === "undefined" || navigator.onLine !== false)
   ) {
     const rebuildResult = await fetchOrFallback(

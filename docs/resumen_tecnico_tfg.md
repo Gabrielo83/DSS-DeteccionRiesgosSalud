@@ -553,6 +553,17 @@ Evidencia automatizada:
 - Al abrir una notificacion se registra su clave `absence:{absenceId}` como atendida y disminuye el contador de la campanita.
 - Las pruebas automatizadas introducen deliberadamente diagnostico, CIE-10 y un nombre de documento en un objeto de prueba y confirman que ninguno se renderiza.
 
+## HU-005: prevalencia diagnostica agregada
+
+- El dashboard muestra hasta cinco grupos diagnosticos prevalentes en una ventana movil de tres meses que termina en el mes seleccionado.
+- El ranking considera solamente certificados validados o aprobados, ordena por cantidad de certificados y desempata por dias perdidos.
+- Cada fila presenta grupo diagnostico, certificados, dias y porcentaje sobre el total validado de la ventana.
+- La informacion es agregada: no contiene empleados, diagnosticos detallados, CIE-10 ni documentos medicos.
+- En Firebase, Cloud Functions publica los grupos dentro de `indicadores_riesgo/global`; Gerencia y RR. HH. consumen esa proyeccion sin acceso a `historial_medico`.
+- En modo local, el mismo calculo se realiza sobre el historial validado disponible para conservar la equivalencia funcional.
+- La tabla `Empleados con riesgo individual` se mantiene en codigo detras de una bandera desactivada y deja de mostrarse porque no forma parte de HU-005 ni del prototipo aprobado.
+- El panel se ubica debajo del bloque Mapa de calor/Evolucion, por lo que no modifica la primera vista presentada en el TFG.
+
 ## Pruebas ejecutadas habitualmente
 
 ```bash

@@ -10,6 +10,7 @@ test("agrega riesgo mensual y sectorial sin datos personales", () => {
       riesgoPuntaje: 8,
       dias: 2,
       sector: "Produccion",
+      grupoPatologia: "musculoesqueletica",
       nombreCompleto: "Dato sensible",
     },
     {
@@ -18,6 +19,7 @@ test("agrega riesgo mensual y sectorial sin datos personales", () => {
       riesgoPuntaje: 4,
       dias: 4,
       sector: "Logistica",
+      grupoPatologia: "respiratoria",
     },
     {
       estadoFinal: "rechazado",
@@ -34,18 +36,48 @@ test("agrega riesgo mensual y sectorial sin datos personales", () => {
     certificados: 2,
     diasPerdidos: 6,
     promedioRiesgo: 6,
+    grupos: [
+      {
+        grupoPatologia: "respiratoria",
+        certificados: 1,
+        diasPerdidos: 4,
+        promedioRiesgo: 4,
+      },
+      {
+        grupoPatologia: "musculoesqueletica",
+        certificados: 1,
+        diasPerdidos: 2,
+        promedioRiesgo: 8,
+      },
+    ],
     sectores: [
       {
         sector: "Logistica",
         certificados: 1,
         diasPerdidos: 4,
         promedioRiesgo: 4,
+        grupos: [
+          {
+            grupoPatologia: "respiratoria",
+            certificados: 1,
+            diasPerdidos: 4,
+            promedioRiesgo: 4,
+          },
+        ],
       },
       {
         sector: "Produccion",
         certificados: 1,
         diasPerdidos: 2,
         promedioRiesgo: 8,
+        grupos: [
+          {
+            grupoPatologia: "musculoesqueletica",
+            certificados: 1,
+            diasPerdidos: 2,
+            promedioRiesgo: 8,
+          },
+        ],
       },
     ],
   });

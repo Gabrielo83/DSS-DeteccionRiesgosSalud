@@ -232,79 +232,81 @@ describe('Funcionalidad del Dashboard', () => {
     expect(screen.getByText(/Tendencia del riesgo promedio del personal en los ultimos 12 meses/i)).toBeInTheDocument()
   })
 
-  it('presenta la tabla de riesgo con encabezados y muestra mensaje sin datos', () => {
+  it('oculta la tabla de riesgo individual fuera del alcance de HU-005', () => {
     renderDashboard()
 
-    ;['Nombre', 'Sector', 'Patologia mas recurrente', 'Puntuacion de riesgo', 'Nivel', 'Acciones'].forEach((header) => {
-      expect(screen.getByRole('columnheader', { name: new RegExp(header, 'i') })).toBeInTheDocument()
-    })
-
-    expect(
-      screen.getByText(/Aun no hay empleados con riesgo individual/i),
-    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', {
+      name: /Empleados con riesgo individual/i,
+    })).not.toBeInTheDocument()
   })
 
-  it('muestra empleados con riesgo individual cuando hay recurrencia del mismo grupo diagnostico', () => {
+  it('muestra hasta cinco grupos prevalentes de la ventana movil de tres meses', () => {
     mockQueue.splice(0, mockQueue.length)
     mockHistory['EMP-1'] = [
       {
-        id: 'CM-REC-001',
+        id: 'CM-PREV-001',
         employee: 'Ana Gomez',
         employeeId: 'EMP-1',
         sector: 'Produccion',
         status: 'Validado',
-        riskScore: 8.4,
-        issued: '2026-02-10T00:00:00.000Z',
-        startDate: '2026-02-10',
-        endDate: '2026-02-15',
-        title: 'Lumbalgia ocupacional',
-        detailedReason: 'Lumbalgia por tarea de carga',
+        issued: '2026-05-10T00:00:00.000Z',
+        startDate: '2026-05-10',
+        endDate: '2026-05-11',
+        days: 2,
         pathologyCategory: 'musculoskeletal',
       },
       {
-        id: 'CM-REC-002',
+        id: 'CM-PREV-002',
         employee: 'Ana Gomez',
         employeeId: 'EMP-1',
         sector: 'Produccion',
         status: 'Validado',
-        riskScore: 8.6,
-        issued: '2026-04-12T00:00:00.000Z',
-        startDate: '2026-04-12',
-        endDate: '2026-04-18',
-        title: 'Lumbalgia ocupacional',
-        detailedReason: 'Segundo episodio de lumbalgia',
+        issued: '2026-06-12T00:00:00.000Z',
+        startDate: '2026-06-12',
+        endDate: '2026-06-14',
+        days: 3,
         pathologyCategory: 'musculoskeletal',
       },
       {
-        id: 'CM-REC-003',
+        id: 'CM-PREV-003',
         employee: 'Ana Gomez',
         employeeId: 'EMP-1',
         sector: 'Produccion',
         status: 'Validado',
-        riskScore: 8.9,
-        issued: '2026-06-01T00:00:00.000Z',
-        startDate: '2026-06-01',
-        endDate: '2026-06-07',
-        title: 'Lumbalgia ocupacional',
-        detailedReason: 'Tercer episodio de lumbalgia',
+        issued: '2026-07-01T00:00:00.000Z',
+        startDate: '2026-07-01',
+        endDate: '2026-07-04',
+        days: 4,
         pathologyCategory: 'musculoskeletal',
+      },
+      {
+        id: 'CM-PREV-004',
+        employee: 'Ana Gomez',
+        employeeId: 'EMP-1',
+        sector: 'Produccion',
+        status: 'Validado',
+        issued: '2026-07-08T00:00:00.000Z',
+        startDate: '2026-07-08',
+        endDate: '2026-07-09',
+        days: 2,
+        pathologyCategory: 'respiratory',
       },
     ]
 
     renderDashboard()
 
     const heading = screen.getByRole('heading', {
-      name: /Empleados con riesgo individual/i,
+      name: /Grupos diagnosticos prevalentes/i,
     })
-    const riskSection = heading.closest('article')
-    expect(riskSection).not.toBeNull()
-    const scoped = within(riskSection || document.body)
+    const prevalenceSection = heading.closest('section')
+    expect(prevalenceSection).not.toBeNull()
+    const scoped = within(prevalenceSection || document.body)
 
-    expect(scoped.getByText(/Ana Gomez/i)).toBeInTheDocument()
-    expect(scoped.getByText(/Produccion/i)).toBeInTheDocument()
     expect(scoped.getByText(/Musculoesqueleticas/i)).toBeInTheDocument()
-    expect(scoped.getByText(/8\.9 \/ 10/i)).toBeInTheDocument()
-    expect(scoped.queryByText(/Aun no hay empleados con riesgo individual/i)).toBeNull()
+    expect(scoped.getByText(/Respiratorias/i)).toBeInTheDocument()
+    expect(scoped.getByText(/3 certificados/i)).toBeInTheDocument()
+    expect(scoped.getByText(/75%/i)).toBeInTheDocument()
+    expect(scoped.getByText(/Ultimos 3 meses/i)).toBeInTheDocument()
   })
 
   it('abre y cierra el menu de navegacion movil', async () => {
