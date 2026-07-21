@@ -22,6 +22,16 @@ export const rebuildFirebaseRiskIndicator = async () => {
   return result.data;
 };
 
+export const rebuildFirebaseAbsenceIndicator = async () => {
+  const functions = getFunctions(getFirebaseApp(), "us-east1");
+  const callable = httpsCallable(
+    functions,
+    "reconstruirIndicadoresAusentismo",
+  );
+  const result = await callable();
+  return result.data;
+};
+
 if (typeof window !== "undefined") {
   window.rebuildRiskAlerts = rebuildFirebaseRiskAlerts;
 }

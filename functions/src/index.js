@@ -11,6 +11,7 @@ import {
 } from "./alertEngine.js";
 import { buildAlertSummary } from "./alertSummary.js";
 import { buildRiskIndicator } from "./riskIndicator.js";
+import { buildAbsenceIndicator } from "./absenceIndicator.js";
 
 initializeApp();
 
@@ -856,6 +857,53 @@ export const reconstruirIndicadoresRiesgo = onCall(
     const indicator = await rebuildRiskIndicator();
     await db.collection("auditoria").add({
       eventType: "indicadores_riesgo_reconstruidos_backend",
+      entityId: "global",
+      user: request.auth?.token?.email || request.auth.uid,
+      role: caller.rol,
+      metadata: { periodos: indicator.periodos.length },
+      creadoEn: FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
+    });
+    return indicator;
+  },
+);
+
+const rebuildAbsenceIndicator = async () => {
+  const snapshot = await db.collection("ausencias").get();
+  const indicator = buildAbsenceIndicator(
+    snapshot.docs.map((document) => document.data()),
+  );
+  await db.doc("indicadores_ausentismo/global").set(
+    {
+      ...indicator,
+      actualizadoEn: FieldValue.serverTimestamp(),
+    },
+    { merge: false },
+  );
+  return indicator;
+};
+
+export const actualizarIndicadoresAusentismo = onDocumentWritten(
+  {
+    document: "ausencias/{absenceId}",
+    region: "us-east1",
+  },
+  async (event) => {
+    const indicator = await rebuildAbsenceIndicator();
+    logger.info("Indicadores agregados de ausentismo actualizados.", {
+      absenceId: event.params.absenceId,
+      periodos: indicator.periodos.length,
+    });
+  },
+);
+
+export const reconstruirIndicadoresAusentismo = onCall(
+  { region: "us-east1" },
+  async (request) => {
+    const caller = await requireEnabledUser(request);
+    const indicator = await rebuildAbsenceIndicator();
+    await db.collection("auditoria").add({
+      eventType: "indicadores_ausentismo_reconstruidos_backend",
       entityId: "global",
       user: request.auth?.token?.email || request.auth.uid,
       role: caller.rol,

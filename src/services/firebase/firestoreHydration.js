@@ -8,6 +8,7 @@ import {
   getParametrosRiesgo,
   getIndicadorAlertas,
   getIndicadorRiesgo,
+  getIndicadorAusentismo,
   listAlertasRiesgo,
   listValidaciones,
 } from "../../utils/firestoreEntities.js";
@@ -28,9 +29,13 @@ import {
   replaceRiskAlerts,
   replaceRiskAlertSummary,
 } from "../../utils/riskAlertStorage.js";
-import { rebuildFirebaseAlertSummary } from "./alertService.js";
-import { rebuildFirebaseRiskIndicator } from "./alertService.js";
+import {
+  rebuildFirebaseAbsenceIndicator,
+  rebuildFirebaseAlertSummary,
+  rebuildFirebaseRiskIndicator,
+} from "./alertService.js";
 import { replaceRiskIndicator } from "../../utils/riskIndicatorStorage.js";
+import { replaceAbsenceIndicator } from "../../utils/absenceIndicatorStorage.js";
 import { readAbsences, replaceAbsences } from "../../utils/absenceStorage.js";
 import { recordDashboardSyncSuccess } from "../../utils/syncStatus.js";
 
@@ -274,6 +279,31 @@ const normalizeRiskIndicator = (doc = {}) => ({
   updatedAt: toIsoString(doc.actualizadoEn),
 });
 
+const normalizeAbsenceIndicator = (doc = {}) => ({
+  periods: (doc.periodos || []).map((period) => ({
+    period: period.periodo || "",
+    absenceCount: Number(period.ausencias || 0),
+    daysLost: Number(period.diasPerdidos || 0),
+    types: (period.tipos || []).map((type) => ({
+      type: type.tipo || "Sin tipo informado",
+      absenceCount: Number(type.ausencias || 0),
+      daysLost: Number(type.diasPerdidos || 0),
+    })),
+    sectors: (period.sectores || []).map((sector) => ({
+      sector: sector.sector || "Sin sector",
+      absenceCount: Number(sector.ausencias || 0),
+      daysLost: Number(sector.diasPerdidos || 0),
+      types: (sector.tipos || []).map((type) => ({
+        type: type.tipo || "Sin tipo informado",
+        absenceCount: Number(type.ausencias || 0),
+        daysLost: Number(type.diasPerdidos || 0),
+      })),
+    })),
+  })),
+  version: doc.version || "",
+  updatedAt: toIsoString(doc.actualizadoEn),
+});
+
 const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
   try {
     return { ok: true, value: await fetcher(), error: null };
@@ -291,6 +321,14 @@ const fetchOrFallback = async (fetcher, fallback, eventName, detail) => {
 export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const clinicalRoles = ["superAdmin", "medico", "administrativoSalud"];
   const canReadClinical = clinicalRoles.includes(role);
+  const operationalRoles = [
+    "superAdmin",
+    "medico",
+    "administrativo",
+    "administrativoSalud",
+    "respRRHH",
+  ];
+  const canReadOperational = operationalRoles.includes(role);
   const detail = { user: user?.email, role };
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     appendAuditLog("firebase_hydration_local_fallback", {
@@ -319,6 +357,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     alertasResult,
     indicadorAlertasResult,
     indicadorRiesgoResult,
+    indicadorAusentismoResult,
   ] =
     await Promise.all([
       fetchOrFallback(listEmpleados, [], "firebase_hydration_failed", detail),
@@ -329,7 +368,9 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
         "firebase_hydration_failed",
         detail,
       ),
-      fetchOrFallback(listAusencias, [], "firebase_hydration_failed", detail),
+      canReadOperational
+        ? fetchOrFallback(listAusencias, [], "firebase_hydration_failed", detail)
+        : Promise.resolve({ ok: true, value: [], error: null }),
       canReadClinical
         ? fetchOrFallback(
             listValidaciones,
@@ -341,7 +382,9 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       canReadClinical
         ? fetchOrFallback(listHistorial, [], "firebase_hydration_failed", detail)
         : Promise.resolve({ ok: true, value: [], error: null }),
-      fetchOrFallback(listBorradores, [], "firebase_hydration_failed", detail),
+      canReadOperational
+        ? fetchOrFallback(listBorradores, [], "firebase_hydration_failed", detail)
+        : Promise.resolve({ ok: true, value: [], error: null }),
       canReadClinical
         ? fetchOrFallback(
             listPlanesPreventivos,
@@ -370,6 +413,12 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
         "firebase_hydration_failed",
         detail,
       ),
+      fetchOrFallback(
+        getIndicadorAusentismo,
+        null,
+        "firebase_hydration_failed",
+        detail,
+      ),
     ]);
 
   const empleados = empleadosResult.value;
@@ -383,6 +432,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   const alertas = alertasResult.value;
   const indicadorAlertasInicial = indicadorAlertasResult.value;
   const indicadorRiesgoInicial = indicadorRiesgoResult.value;
+  const indicadorAusentismoInicial = indicadorAusentismoResult.value;
 
   let indicadorAlertas = indicadorAlertasInicial;
   let indicadorAlertasFresh = indicadorAlertasResult.ok;
@@ -401,6 +451,25 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     if (rebuildResult.ok) {
       indicadorAlertas = rebuildResult.value;
       indicadorAlertasFresh = true;
+    }
+  }
+  let indicadorAusentismo = indicadorAusentismoInicial;
+  let indicadorAusentismoFresh = indicadorAusentismoResult.ok;
+  if (
+    indicadorAusentismoResult.ok &&
+    (!indicadorAusentismo ||
+      indicadorAusentismo.version !== "absence-indicator-v1") &&
+    (typeof navigator === "undefined" || navigator.onLine !== false)
+  ) {
+    const rebuildResult = await fetchOrFallback(
+      rebuildFirebaseAbsenceIndicator,
+      null,
+      "firebase_absence_indicator_rebuild_failed",
+      detail,
+    );
+    if (rebuildResult.ok) {
+      indicadorAusentismo = rebuildResult.value;
+      indicadorAusentismoFresh = true;
     }
   }
   let indicadorRiesgo = indicadorRiesgoInicial;
@@ -431,8 +500,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       pathologies: patologias,
     });
   }
-  if (ausenciasResult.ok) {
+  if (canReadOperational && ausenciasResult.ok) {
     replaceAbsences(mergeAbsencesWithPendingLocal(ausencias.map(normalizeAbsence)));
+  } else if (!canReadOperational) {
+    replaceAbsences([]);
   }
 
   if (canReadClinical) {
@@ -444,8 +515,10 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   } else {
     replaceValidationQueue([]);
   }
-  if (borradoresResult.ok) {
+  if (canReadOperational && borradoresResult.ok) {
     replaceDrafts(mergeDraftsWithPendingLocal(borradores.map(normalizeDraft)));
+  } else if (!canReadOperational) {
+    replaceDrafts([]);
   }
 
   const historyByEmployee = {};
@@ -488,6 +561,13 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       indicadorRiesgo ? normalizeRiskIndicator(indicadorRiesgo) : null,
     );
   }
+  if (indicadorAusentismoFresh) {
+    replaceAbsenceIndicator(
+      indicadorAusentismo
+        ? normalizeAbsenceIndicator(indicadorAusentismo)
+        : null,
+    );
+  }
 
   const failedCollections = [
     ["empleados", empleadosResult],
@@ -501,6 +581,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     ["alertas_riesgo", alertasResult],
     ["indicadores_alertas", indicadorAlertasResult],
     ["indicadores_riesgo", indicadorRiesgoResult],
+    ["indicadores_ausentismo", indicadorAusentismoResult],
   ]
     .filter(([, result]) => !result.ok)
     .map(([collectionName]) => collectionName);
@@ -524,6 +605,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
       alertas: alertas.length,
       indicadorAlertas: indicadorAlertas ? 1 : 0,
       indicadorRiesgo: indicadorRiesgo ? 1 : 0,
+      indicadorAusentismo: indicadorAusentismo ? 1 : 0,
       preservoCacheLocal: failedCollections.length > 0,
       coleccionesNoDisponibles: failedCollections,
     },
@@ -546,6 +628,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
     alertas: alertas.length,
     indicadorAlertas: indicadorAlertas ? 1 : 0,
     indicadorRiesgo: indicadorRiesgo ? 1 : 0,
+    indicadorAusentismo: indicadorAusentismo ? 1 : 0,
     preservedLocalCache: failedCollections.length > 0,
     failedCollections,
   };
@@ -643,32 +726,41 @@ const shouldPreserveLocalSnapshot = (snapshot) => {
 export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
   const clinicalRoles = ["superAdmin", "medico", "administrativoSalud"];
   const canReadClinical = clinicalRoles.includes(role);
+  const canReadOperational = [
+    "superAdmin",
+    "medico",
+    "administrativo",
+    "administrativoSalud",
+    "respRRHH",
+  ].includes(role);
   const { db } = getFirebaseServices();
   const unsubscribers = [];
 
-  unsubscribers.push(
-    onSnapshot(
-      collection(db, "ausencias"),
-      (snapshot) => {
-        if (shouldPreserveLocalSnapshot(snapshot)) return;
-        replaceAbsences(
-          mergeAbsencesWithPendingLocal(
-            mapSnapshotDocs(snapshot).map(normalizeAbsence),
-          ),
-        );
-      },
-      (error) => {
-        appendAuditLog("firebase_realtime_sync_failed", {
-          user: user?.email,
-          role,
-          metadata: {
-            collection: "ausencias",
-            error: error?.message || "No se pudo escuchar Firestore.",
-          },
-        });
-      },
-    ),
-  );
+  if (canReadOperational) {
+    unsubscribers.push(
+      onSnapshot(
+        collection(db, "ausencias"),
+        (snapshot) => {
+          if (shouldPreserveLocalSnapshot(snapshot)) return;
+          replaceAbsences(
+            mergeAbsencesWithPendingLocal(
+              mapSnapshotDocs(snapshot).map(normalizeAbsence),
+            ),
+          );
+        },
+        (error) => {
+          appendAuditLog("firebase_realtime_sync_failed", {
+            user: user?.email,
+            role,
+            metadata: {
+              collection: "ausencias",
+              error: error?.message || "No se pudo escuchar Firestore.",
+            },
+          });
+        },
+      ),
+    );
+  }
 
   if (canReadClinical) {
     unsubscribers.push(
@@ -763,13 +855,13 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
 
   unsubscribers.push(
     onSnapshot(
-      collection(db, "borradores"),
+      doc(db, "indicadores_ausentismo", "global"),
       (snapshot) => {
         if (shouldPreserveLocalSnapshot(snapshot)) return;
-        replaceDrafts(
-          mergeDraftsWithPendingLocal(
-            mapSnapshotDocs(snapshot).map(normalizeDraft),
-          ),
+        replaceAbsenceIndicator(
+          snapshot.exists()
+            ? normalizeAbsenceIndicator(snapshot.data())
+            : null,
         );
       },
       (error) => {
@@ -777,13 +869,39 @@ export const startFirebaseRealtimeSync = ({ user, role } = {}) => {
           user: user?.email,
           role,
           metadata: {
-            collection: "borradores",
+            collection: "indicadores_ausentismo",
             error: error?.message || "No se pudo escuchar Firestore.",
           },
         });
       },
     ),
   );
+
+  if (canReadOperational) {
+    unsubscribers.push(
+      onSnapshot(
+        collection(db, "borradores"),
+        (snapshot) => {
+          if (shouldPreserveLocalSnapshot(snapshot)) return;
+          replaceDrafts(
+            mergeDraftsWithPendingLocal(
+              mapSnapshotDocs(snapshot).map(normalizeDraft),
+            ),
+          );
+        },
+        (error) => {
+          appendAuditLog("firebase_realtime_sync_failed", {
+            user: user?.email,
+            role,
+            metadata: {
+              collection: "borradores",
+              error: error?.message || "No se pudo escuchar Firestore.",
+            },
+          });
+        },
+      ),
+    );
+  }
 
   return () => {
     unsubscribers.forEach((unsubscribe) => unsubscribe());

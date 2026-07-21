@@ -28,6 +28,7 @@ export const COLLECTIONS = {
   ALERTAS_RIESGO: "alertas_riesgo",
   INDICADORES_ALERTAS: "indicadores_alertas",
   INDICADORES_RIESGO: "indicadores_riesgo",
+  INDICADORES_AUSENTISMO: "indicadores_ausentismo",
 };
 
 const withTimestamps = (data, includeCreated) => ({

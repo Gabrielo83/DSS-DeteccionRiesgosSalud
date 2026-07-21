@@ -80,6 +80,9 @@ export const getIndicadorAlertas = () =>
 export const getIndicadorRiesgo = () =>
   getDocById(COLLECTIONS.INDICADORES_RIESGO, "global");
 
+export const getIndicadorAusentismo = () =>
+  getDocById(COLLECTIONS.INDICADORES_AUSENTISMO, "global");
+
 export const saveUsuario = (uid, data) =>
   upsertDocById(COLLECTIONS.USUARIOS, uid, data, { includeCreated: true });
 

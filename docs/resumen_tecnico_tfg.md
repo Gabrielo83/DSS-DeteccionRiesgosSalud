@@ -569,6 +569,16 @@ Evidencia automatizada:
 - El boton `Descargar reporte` genera un CSV UTF-8 compatible con planillas, separado por punto y coma y protegido contra inyeccion de formulas.
 - El reporte contiene metricas, resumen sectorial y prevalencia diagnostica. Excluye empleados, CIE-10, diagnosticos detallados y referencias a documentos medicos.
 
+### Ausentismo agregado para Gerencia
+
+- Gerencia no recibe permiso de lectura sobre `ausencias`, porque esa coleccion puede contener informacion operativa asociada a certificados medicos.
+- Cloud Functions reconstruye `indicadores_ausentismo/global` ante cada escritura en `ausencias` y conserva hasta 36 periodos mensuales.
+- La proyeccion contiene solamente cantidad de ausencias y dias perdidos, totalizados por periodo, sector y tipo general de ausencia.
+- No incorpora empleado, diagnostico, CIE-10, institucion, notas ni documento medico.
+- El dashboard, el historico de doce meses y el CSV del rol `gerente` consumen esta proyeccion agregada. Los roles operativos mantienen el calculo sobre las ausencias detalladas que tienen permitido consultar.
+- `reconstruirIndicadoresAusentismo` permite generar el primer indicador con los registros existentes; luego `actualizarIndicadoresAusentismo` lo mantiene en tiempo real.
+- Las reglas permiten leer `indicadores_ausentismo` a usuarios autenticados, pero reservan su escritura exclusivamente al backend.
+
 ## Pruebas ejecutadas habitualmente
 
 ```bash
