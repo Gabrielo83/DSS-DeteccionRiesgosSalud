@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader.jsx";
+import MetricHistoryModal from "../components/MetricHistoryModal.jsx";
 import AuthContext from "../context/AuthContext.jsx";
 import { pathologyCategories } from "../data/pathologyCategories.js";
 import { readValidationQueue } from "../utils/validationStorage.js";
@@ -34,6 +35,7 @@ import {
 } from "../utils/riskAlertStorage.js";
 import { isFirebaseProvider } from "../services/appMode.js";
 import { readRiskIndicator } from "../utils/riskIndicatorStorage.js";
+import { downloadDashboardReportCsv } from "../utils/dashboardReport.js";
 import {
   DASHBOARD_SYNC_INTERVAL_MS,
   DASHBOARD_SYNC_SUCCESS_EVENT,
@@ -402,6 +404,10 @@ function Dashboard({ isDark, onToggleTheme }) {
     alertDiagnosticGroups: [],
     headcount: 0,
     aggregateMetrics: null,
+  });
+  const [metricHistoryModal, setMetricHistoryModal] = useState({
+    isOpen: false,
+    metricKey: "absenceRate",
   });
   const [planModal, setPlanModal] = useState({
     isOpen: false,
@@ -1092,6 +1098,7 @@ function Dashboard({ isDark, onToggleTheme }) {
       availableDays > 0 ? ((totalDaysLost / availableDays) * 100).toFixed(1) : "0.0";
     return [
       {
+        key: "absenceRate",
         title: "Tasa de Ausentismo",
         value: `${absenteeRate}%`,
         badge: periodRange.label,
@@ -1102,6 +1109,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         secondaryValue: availableDays,
       },
       {
+        key: "averageRisk",
         title: "Riesgo Promedio",
         value: riskAverage != null ? riskAverage.toFixed(1) : "--",
         badge: "Certificados",
@@ -1112,6 +1120,7 @@ function Dashboard({ isDark, onToggleTheme }) {
         secondaryValue: "Promedio por certificado",
       },
       {
+        key: "activeAlerts",
         title: "Alertas Activas",
         value: alertsCount,
         badge: "Alta prioridad",
@@ -1212,6 +1221,193 @@ function Dashboard({ isDark, onToggleTheme }) {
       return { ...item, value: avg, count: scores.length };
     });
   }, [allHistoryEntries, riskIndicator, today, useAggregatedRisk]);
+  const metricHistory = useMemo(() => {
+    const months = [];
+    for (let offset = 11; offset >= 0; offset -= 1) {
+      const date = new Date(periodYear, periodMonth - offset, 1);
+      months.push({
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+        label: date.toLocaleDateString("es-AR", {
+          month: "long",
+          year: "numeric",
+        }),
+        shortLabel: date.toLocaleDateString("es-AR", { month: "short" }),
+      });
+    }
+
+    const riskPeriods = new Map(
+      (riskIndicator?.periods || []).map((period) => [period.period, period]),
+    );
+    const alertPeriods = new Map(
+      (riskAlertSummary?.periods || []).map((period) => [
+        period.period,
+        Number(period.count || 0),
+      ]),
+    );
+    if (!firebaseMode) {
+      effectiveRiskAlerts.forEach((alert) => {
+        const dateValue = alert.latestDate || alert.updatedAt;
+        const timestamp = getLocalDateTimestamp(dateValue);
+        if (timestamp === null) return;
+        const date = new Date(timestamp);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        alertPeriods.set(key, (alertPeriods.get(key) || 0) + 1);
+      });
+    }
+
+    const validatedEntries = allHistoryEntries.filter((entry) => {
+      const status = String(entry.status || "").toLowerCase();
+      return status === "validado" || status === "aprobado";
+    });
+
+    const absenceRate = [];
+    const averageRisk = [];
+    const activeAlerts = [];
+    months.forEach((month) => {
+      const startMs = new Date(month.year, month.month, 1).getTime();
+      const endMs = new Date(
+        month.year,
+        month.month + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      ).getTime();
+      const monthAbsences = absenceRecords.filter((entry) =>
+        isWithinPeriod(entry.startDate || entry.submittedAt, startMs, endMs),
+      );
+      const daysLost = monthAbsences.reduce(
+        (sum, entry) =>
+          sum +
+          Number(
+            entry.absenceDays ||
+              entry.days ||
+              diffDaysInclusive(entry.startDate, entry.endDate) ||
+              0,
+          ),
+        0,
+      );
+      const activeHeadcount = employees.filter((employee) => {
+        if (employee.active === false) return false;
+        const hire = Date.parse(employee.hireDate);
+        const termination = employee.terminationDate
+          ? Date.parse(employee.terminationDate)
+          : null;
+        return (
+          !Number.isNaN(hire) &&
+          hire <= endMs &&
+          (!termination || termination >= startMs)
+        );
+      }).length;
+      const workingDays = countWorkingDays(
+        new Date(month.year, month.month, 1),
+        new Date(month.year, month.month + 1, 0),
+      );
+      const availableDays = activeHeadcount * workingDays;
+      const rate = availableDays ? (daysLost / availableDays) * 100 : 0;
+      absenceRate.push({
+        ...month,
+        value: rate,
+        displayValue: `${rate.toFixed(1)}%`,
+        detailPrimary: `${daysLost} dias perdidos`,
+        detailSecondary: `${availableDays} dias trabajados`,
+      });
+
+      const aggregateRisk = firebaseMode ? riskPeriods.get(month.key) : null;
+      const monthValidated = aggregateRisk
+        ? []
+        : validatedEntries.filter((entry) => {
+            const candidateDate =
+              entry.startDate ||
+              entry.issueDate ||
+              entry.issued ||
+              entry.validityDate ||
+              entry.updatedAt;
+            return isWithinPeriod(candidateDate, startMs, endMs);
+          });
+      const scores = monthValidated
+        .map((entry) =>
+          extractScoreValue(entry.riskScoreValue ?? entry.riskScore),
+        )
+        .filter((score) => score != null);
+      const riskValue = aggregateRisk
+        ? aggregateRisk.averageRisk ?? 0
+        : scores.length
+          ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+          : 0;
+      const certificateCount = aggregateRisk
+        ? aggregateRisk.certificateCount || 0
+        : monthValidated.length;
+      averageRisk.push({
+        ...month,
+        value: riskValue,
+        displayValue: certificateCount ? riskValue.toFixed(1) : "--",
+        detailPrimary: `${certificateCount} certificado${certificateCount === 1 ? "" : "s"}`,
+        detailSecondary: "Promedio por certificado",
+      });
+
+      const alertCount = alertPeriods.get(month.key) || 0;
+      activeAlerts.push({
+        ...month,
+        value: alertCount,
+        displayValue: String(alertCount),
+        detailPrimary: `${alertCount} alerta${alertCount === 1 ? "" : "s"}`,
+        detailSecondary: "Alertas activas asociadas al mes",
+      });
+    });
+
+    return {
+      absenceRate: {
+        title: "Evolucion historica - Tasa de ausentismo",
+        series: absenceRate,
+      },
+      averageRisk: {
+        title: "Evolucion historica - Riesgo promedio",
+        series: averageRisk,
+      },
+      activeAlerts: {
+        title: "Evolucion historica - Alertas activas",
+        series: activeAlerts,
+      },
+    };
+  }, [
+    absenceRecords,
+    allHistoryEntries,
+    effectiveRiskAlerts,
+    employees,
+    firebaseMode,
+    periodMonth,
+    periodYear,
+    riskAlertSummary,
+    riskIndicator,
+  ]);
+  const selectedMetricHistory =
+    metricHistory[metricHistoryModal.metricKey] || metricHistory.absenceRate;
+  const openMetricHistory = (metricKey) =>
+    setMetricHistoryModal({ isOpen: true, metricKey });
+  const closeMetricHistory = () =>
+    setMetricHistoryModal((current) => ({ ...current, isOpen: false }));
+  const downloadDashboardReport = useCallback(() => {
+    downloadDashboardReportCsv(
+      {
+        periodLabel: periodRange.label,
+        generatedAt: new Date().toLocaleString("es-AR"),
+        metrics: summaryMetrics,
+        sectors: heatmapData,
+        prevalence: prevalentDiagnosticGroups,
+      },
+      `reporte-dashboard-${selectedPeriodKey}.csv`,
+    );
+  }, [
+    heatmapData,
+    periodRange.label,
+    prevalentDiagnosticGroups,
+    selectedPeriodKey,
+    summaryMetrics,
+  ]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const refreshAll = () => {
@@ -1695,8 +1891,18 @@ function Dashboard({ isDark, onToggleTheme }) {
           <div className="grid gap-4 md:grid-cols-3">
             {summaryMetrics.map((metric) => (
               <article
-                key={metric.title}
-                className="flex flex-col justify-between rounded-3xl bg-white p-5 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50"
+                key={metric.key}
+                role="button"
+                tabIndex={0}
+                aria-label={`Ver evolucion historica de ${metric.title}`}
+                onClick={() => openMetricHistory(metric.key)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openMetricHistory(metric.key);
+                  }
+                }}
+                className="flex cursor-pointer flex-col justify-between rounded-3xl bg-white p-5 shadow-lg shadow-slate-300/30 ring-1 ring-slate-100 transition focus:outline-none focus:ring-2 focus:ring-slate-400 dark:bg-slate-950/80 dark:shadow-black/30 dark:ring-slate-900/50 dark:focus:ring-slate-600"
               >
                 <header className="flex items-start justify-between">
                   <div>
@@ -1751,6 +1957,7 @@ function Dashboard({ isDark, onToggleTheme }) {
               </div>
               <button
                 type="button"
+                onClick={downloadDashboardReport}
                 className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
               >
                 Descargar reporte
@@ -2163,6 +2370,13 @@ function Dashboard({ isDark, onToggleTheme }) {
           </div>
         </section>
       </main>
+      <MetricHistoryModal
+        isOpen={metricHistoryModal.isOpen}
+        title={selectedMetricHistory.title}
+        subtitle={`Ultimos 12 meses hasta ${periodRange.label}`}
+        series={selectedMetricHistory.series}
+        onClose={closeMetricHistory}
+      />
       {heatmapModal.isOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">

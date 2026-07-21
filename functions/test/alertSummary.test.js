@@ -11,6 +11,7 @@ test("publica solo cantidades agregadas de alertas activas", () => {
       grupoPatologia: "musculoesqueletica",
       recurrencias: 3,
       ventanaMeses: 6,
+      ultimaFecha: "2026-05-18",
       nombreCompleto: "Dato sensible",
     },
     {
@@ -20,6 +21,7 @@ test("publica solo cantidades agregadas de alertas activas", () => {
       grupoPatologia: "respiratoria",
       recurrencias: 1,
       ventanaMeses: 6,
+      ultimaFecha: "2026-06-02",
     },
     { estado: "resuelta", sector: "Logistica", motivos: ["riesgo_alto"] },
   ]);
@@ -49,6 +51,10 @@ test("publica solo cantidades agregadas de alertas activas", () => {
     recurrenciaDiagnostica: 1,
     riesgoAlto: 1,
   });
+  assert.deepEqual(result.periodos, [
+    { periodo: "2026-05", cantidad: 1 },
+    { periodo: "2026-06", cantidad: 1 },
+  ]);
   assert.equal("nombreCompleto" in result, false);
   assert.equal(JSON.stringify(result).includes("Dato sensible"), false);
 });

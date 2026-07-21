@@ -237,6 +237,10 @@ const normalizeRiskAlertSummary = (doc = {}) => ({
     })),
   })),
   reasons: doc.motivos || {},
+  periods: (doc.periodos || []).map((period) => ({
+    period: period.periodo || "",
+    count: Number(period.cantidad || 0),
+  })),
   version: doc.version || "",
   updatedAt: toIsoString(doc.actualizadoEn),
 });
@@ -385,7 +389,7 @@ export const hydrateFirebaseData = async ({ user, role } = {}) => {
   if (
     indicadorAlertasResult.ok &&
     (!indicadorAlertas ||
-      indicadorAlertas.version !== "alert-summary-v2") &&
+      indicadorAlertas.version !== "alert-summary-v3") &&
     (typeof navigator === "undefined" || navigator.onLine !== false)
   ) {
     const rebuildResult = await fetchOrFallback(

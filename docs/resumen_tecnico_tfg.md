@@ -563,6 +563,11 @@ Evidencia automatizada:
 - En modo local, el mismo calculo se realiza sobre el historial validado disponible para conservar la equivalencia funcional.
 - La tabla `Empleados con riesgo individual` se mantiene en codigo detras de una bandera desactivada y deja de mostrarse porque no forma parte de HU-005 ni del prototipo aprobado.
 - El panel se ubica debajo del bloque Mapa de calor/Evolucion, por lo que no modifica la primera vista presentada en el TFG.
+- Las tres tarjetas principales conservan su aspecto y abren, mediante clic o teclado, una evolucion agregada de doce meses hasta el periodo seleccionado.
+- El historico de ausentismo presenta tasa, dias perdidos y dias trabajados; el de riesgo presenta promedio y certificados; el de alertas presenta cantidades mensuales agregadas.
+- `indicadores_alertas/global` publica desde `alert-summary-v3` cantidades mensuales de alertas activas para que Gerencia y RR. HH. consulten la tendencia sin leer alertas individuales.
+- El boton `Descargar reporte` genera un CSV UTF-8 compatible con planillas, separado por punto y coma y protegido contra inyeccion de formulas.
+- El reporte contiene metricas, resumen sectorial y prevalencia diagnostica. Excluye empleados, CIE-10, diagnosticos detallados y referencias a documentos medicos.
 
 ## Pruebas ejecutadas habitualmente
 

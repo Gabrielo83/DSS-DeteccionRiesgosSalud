@@ -232,6 +232,51 @@ describe('Funcionalidad del Dashboard', () => {
     expect(screen.getByText(/Tendencia del riesgo promedio del personal en los ultimos 12 meses/i)).toBeInTheDocument()
   })
 
+  it('abre el historico agregado al seleccionar una metrica y permite cerrarlo', async () => {
+    const user = userEvent.setup()
+    renderDashboard()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: /Ver evolucion historica de Tasa de Ausentismo/i,
+      }),
+    )
+
+    const dialog = screen.getByRole('dialog')
+    expect(
+      within(dialog).getByRole('heading', {
+        name: /Evolucion historica - Tasa de ausentismo/i,
+      }),
+    ).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('row')).toHaveLength(13)
+
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: /Cerrar evolucion historica/i,
+      }),
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('descarga el reporte agregado desde el boton existente', async () => {
+    const user = userEvent.setup()
+    const createObjectUrl = vi.fn(() => 'blob:dashboard-report')
+    const revokeObjectUrl = vi.fn()
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    URL.createObjectURL = createObjectUrl
+    URL.revokeObjectURL = revokeObjectUrl
+    renderDashboard()
+
+    await user.click(screen.getByRole('button', { name: /Descargar reporte/i }))
+
+    expect(createObjectUrl).toHaveBeenCalledTimes(1)
+    expect(anchorClick).toHaveBeenCalledTimes(1)
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:dashboard-report')
+    anchorClick.mockRestore()
+  })
+
   it('oculta la tabla de riesgo individual fuera del alcance de HU-005', () => {
     renderDashboard()
 
